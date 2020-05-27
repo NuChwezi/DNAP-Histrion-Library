@@ -39,7 +39,7 @@ Please check [JitPack](https://jitpack.io/#NuChwezi/DNAP-Histrion-Library/) for 
 
 Here is a basic example of how an android activity can invoke the DNAP Histrion with a specific target persona (specified by its UUID) and a specific Persona Subscription Channel (specified by its name). 
 
-<script src="https://gist.github.com/mcnemesis/c4bc68792a2ca2b6a9f833f2dfe1c5bb.js"></script>
+[Click to view Gist](https://gist.github.com/mcnemesis/c4bc68792a2ca2b6a9f833f2dfe1c5bb)
 
 For a full example project with code and a buildable APK, check the demo: [Embed-DNAP-Histrion](https://github.com/NuChwezi/Embed-DNAP-Histrion) repository.
 
