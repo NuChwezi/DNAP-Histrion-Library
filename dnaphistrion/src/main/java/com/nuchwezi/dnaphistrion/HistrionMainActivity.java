@@ -1962,7 +1962,11 @@ public class HistrionMainActivity extends AppCompatActivity {
     }
 
     private void switchToManagePersonas() {
+
         Intent _intent = new Intent(HistrionMainActivity.this, ManagePersonaActivity.class);
+        if(autoInstallChannel != null){
+            _intent.putExtra("CHANNEL:NAME", autoInstallChannel);
+        }
         startActivity(_intent);
     }
 

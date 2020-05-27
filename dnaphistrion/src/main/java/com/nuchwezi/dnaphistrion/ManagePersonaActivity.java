@@ -32,6 +32,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
     private DBAdapter adapter;
     private PersonaAdapter personaAdapter;
     JSONObject knownPersonas;
+    private String autoInstallChannel; // default DNAP Channel
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,6 +46,15 @@ public class ManagePersonaActivity extends AppCompatActivity {
 
         adapter = new DBAdapter(this);
         adapter.open();
+
+        Intent intent = getIntent();
+        if(intent.hasExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL)){
+            try {
+                autoInstallChannel = intent.getStringExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL);
+            }catch (Exception e){
+                Utility.showAlert("Invalid Channel", "The Channel you tried to subscribe to seems be invalid! Contact app developers to rectify this.", this);
+            }
+        }
 
         loadCachedPersonas();
     }
@@ -192,8 +202,8 @@ public class ManagePersonaActivity extends AppCompatActivity {
     }
 
     private void checkSubscriptionChannels() {
-        String subscriptionChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_CHANNELS, "AMT", this);
-        String autoInstallChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, "AMT", this);
+        String subscriptionChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_CHANNELS, autoInstallChannel, this);
+        String autoInstallChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, autoInstallChannel, this);
         boolean allowAutoInstall = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_CHECK_AUTO_INSTALL_FROM_CHANNEL, true, this);
         if((subscriptionChannelSpec == null) && (autoInstallChannelSpec == null))
             return;
