@@ -1,0 +1,26 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nuchwezi.dnaphistrion" >
+
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        >
+        <activity android:name=".HistrionMainActivity" android:label="@string/app_name">
+        </activity>
+        <activity
+            android:name=".SettingsActivity"
+            android:label="@string/action_settings"
+            android:windowSoftInputMode="stateHidden"></activity>
+        <activity
+            android:name=".ManagePersonaActivity"
+            android:label="@string/title_activity_manage_persona"
+            android:windowSoftInputMode="stateHidden"
+            ></activity>
+    </application>
+
+</manifest>

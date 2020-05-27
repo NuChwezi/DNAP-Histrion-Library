@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:threefiftyprefs="http://schemas.android.com/apk/res-auto">
+    <PreferenceCategory
+        android:title="DNAP Profile"
+        android:key="PREF_KEY_SETTINGS_PROFILE">
+
+        <EditTextPreference
+            android:key="PREF_KEY_SETTINGS_AC_NAME"
+            android:summary="A name to be used to refer to you on the app."
+            android:title="Name"
+            />
+
+        <EditTextPreference
+            android:key="PREF_KEY_SETTINGS_AC_PHONE"
+            android:summary="The FULL phone number - including country code, used to uniquely identify your profile, and thus manage your private data securely. Also will help recover your data should you ever need to."
+            android:title="Your Phone#?"
+            />
+    </PreferenceCategory>
+</PreferenceScreen>

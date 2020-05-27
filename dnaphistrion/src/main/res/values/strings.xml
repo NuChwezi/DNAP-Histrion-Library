@@ -1,0 +1,26 @@
+<resources>
+    <string name="app_name">DNAP Histrion</string>
+    <string name="title_location_permission">Requesting for Location Info</string>
+    <string name="text_location_permission">It is recommended that you allow this app to be able to save the active location, as a mechanism to help you tell where you data was last accessed should you ever request for it or need this.</string>
+    <string name="DEFAULT_CHANNEL_REPO_QUERY_PREFIX">https://chwezi.tech/api/channel/personas/?c=%s&amp;_t=%o</string>
+    <string name="getting_started_historion_message">
+        This section of the app contains any tools sent to your app from AMT\'s tool publisher platform.
+        Right now, it is blank, because none have been fetched or sent yet.
+        \n\n
+        FIRST, ensure you have an active Internet connection, and that your phone has data - this is required to fetch the dynamic tools at least once, the first time.
+        \n\n
+        If you believe there should have been some persona shown here, but which isn\'t, possibly go into the "Manage Persona" section (see menu), click the "REFRESH" menu action, and then activate
+        one of the personas listed. Otherwise, ensure your settings have the correct Persona Channel configured (default should be "AMT").
+        \n\nIf the above is okay, and yet you still see no personas after using the "Manage Personas" menu, then just try to restart this app - it\'s possible they were fetched, but none was loaded yet.
+        \n\n
+        If you totally fail to get a persona showing here, and yet your supervisor indicates one was published to your channel, report this problem ASAP.
+    </string>
+    <string name="title_cant_save_act">CAN\'T SAVE Data!</string>
+    <string name="invalid_persona_uuid">The Persona this form is based on, has no UUID or setting the UUID has failed. Contact the designers of this current persona for help.</string>
+    <string name="action_manage_personas_short">Manage</string>
+    <string name="action_manage_personas">Manage Personas</string>
+    <string name="action_fetch_personas">Fetch Personas</string>
+    <string name="action_fetch_personas_short">Refresh</string>
+    <string name="title_activity_manage_persona">All Personas</string>
+    <string name="action_settings">Settings</string>
+</resources>

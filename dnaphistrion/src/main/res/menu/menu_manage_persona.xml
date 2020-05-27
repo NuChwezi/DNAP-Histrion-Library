@@ -1,0 +1,6 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context="com.nuchwezi.historion.ManagePersonaActivity">
+    <item android:id="@+id/action_fetch_personas"  app:showAsAction="always"  android:title="@string/action_fetch_personas" android:titleCondensed="@string/action_fetch_personas_short" />
+</menu>

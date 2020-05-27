@@ -1,25 +1,33 @@
-apply plugin: 'com.android.application'
+apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion 29
+
+
     defaultConfig {
-        applicationId "com.nuchwezi.dnapclient"
-        minSdkVersion 18
+        minSdkVersion 15
         targetSdkVersion 29
         versionCode 1
         versionName "1.0"
+        consumerProguardFiles 'consumer-rules.pro'
     }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+
     implementation 'androidx.appcompat:appcompat:1.1.0'
-    implementation 'androidx.constraintlayout:constraintlayout:1.1.3'
-    implementation project(path: ':dnaphistrion')
+    implementation 'com.squareup.picasso:picasso:2.5.2'
+    implementation group: 'com.google.code.gson', name: 'gson', version: '2.7'
+    implementation 'com.koushikdutta.ion:ion:2.+'
+    implementation files('libs/commons-io-2.4.jar')
+    implementation 'androidx.coordinatorlayout:coordinatorlayout:1.0.0-alpha1'
 }
