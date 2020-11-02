@@ -53,6 +53,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.net.URLConnection;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -500,12 +503,95 @@ public class Utility {
         return nowAsISO;
     }
 
+    public static boolean isURL(String uri) {
+        final URL url;
+        try {
+            url = new URL(uri);
+        } catch (Exception e1) {
+            return false;
+        }
+        return url.getProtocol().startsWith("http");
+    }
+
+    public static ArrayList<String> JSONArrayToStrList(JSONArray jValList) {
+        ArrayList<String> list = new ArrayList<>();
+        if(jValList == null)
+            return list;
+
+        for(int i = 0; i < jValList.length(); i++) {
+            try {
+                list.add(jValList.getString(i));
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+
+        return list;
+    }
+
+    public static boolean getSettingB(String KEY, boolean DEFAULT, Context context) {
+        SharedPreferences sharedPrefs = PreferenceManager
+                .getDefaultSharedPreferences(context);
+        try {
+            Boolean val = sharedPrefs.getBoolean(KEY, DEFAULT);
+            return val;
+        }catch (Exception e){
+            try {
+                return Boolean.valueOf(sharedPrefs.getString(KEY, String.valueOf(DEFAULT)));
+            }catch (Exception ee){
+                return DEFAULT;
+            }
+        }
+    }
+
+    public static Bitmap bitmapFromDataUri(String cloneVal) {
+        String[] parts = cloneVal.split("base64,");
+        if(parts.length == 2) {
+            byte[] decodedString = Base64.decode(parts[1], Base64.DEFAULT);
+            Bitmap bitMap = BitmapFactory.decodeByteArray(decodedString, 0, decodedString.length);
+            return bitMap;
+        }
+        return null;
+    }
+
+    public static boolean checkURLAccessible(String uri) {
+        URL url;
+        try {
+            url = new URL(uri);
+        } catch (MalformedURLException e) {
+            e.printStackTrace();
+            return false;
+        }
+        HttpURLConnection connection;
+        try {
+            connection = (HttpURLConnection) url.openConnection();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+        int code = 0;
+        try {
+/*            StrictMode.ThreadPolicy threadPolicy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+            StrictMode.setThreadPolicy(threadPolicy);*/
+            code = connection.getResponseCode();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+
+        if(code == 200) {
+            return true;
+        } else {
+            return false;
+        }
+    }
 
     public static class DB_KEYS {
         public static final String UUID_LIST = "PERSONA_UUIDS";
         public static final String PERSONA_DICTIONARY = "PERSONA_DICTIONARY";
         public static final String ACTIVE_PERSONA_UUID = "ACTIVE_PERSONA_UUID";
         public static final String SAVED_ACTS = "SAVED_ACTS";
+        public static final String AUTO_SAVE = "AUTO_SAVE";
     }
 
     public static void setSetting(String KEY, String VALUE, Context context) {
@@ -881,6 +967,10 @@ public class Utility {
         public static final String PREF_KEY_SETTINGS_ALLOW_DELETING_ACTIVE_PERSONA = "PREF_KEY_SETTINGS_ALLOW_DELETING_ACTIVE_PERSONA";
         public static final String PREF_KEY_SETTINGS_CHANNELS = "PREF_KEY_SETTINGS_CHANNELS";
         public static final String PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL = "PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL";
-        public static final String PREF_KEY_SETTINGS_CHECK_AUTO_INSTALL_FROM_CHANNEL = "PREF_KEY_SETTINGS_CHECK_AUTO_INSTALL_FROM_CHANNEL";
+        public static final String PREF_KEY_SETTINGS_AUTO_INSTALL_FROM_CHANNEL = "PREF_KEY_SETTINGS_AUTO_INSTALL_FROM_CHANNEL";
+        public static final String PREF_KEY_SETTINGS_AC_PHONE = "PREF_KEY_SETTINGS_AC_PHONE";
+        public static final String PREF_KEY_SETTINGS_AC_NAME = "PREF_KEY_SETTINGS_AC_NAME";
+        public static final String USER_INFO = "USER_PROFILE";
     }
+
 }

@@ -2,11 +2,13 @@ package com.nuchwezi.dnaphistrion;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -20,7 +22,9 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.ExifInterface;
+import android.media.MediaPlayer;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -32,23 +36,31 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebViewClient;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.DatePicker;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.MediaController;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.RelativeLayout;
@@ -56,7 +68,13 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.TimePicker;
 import android.widget.Toast;
+import android.widget.VideoView;
 
+import com.bumptech.glide.Glide;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
 import com.squareup.picasso.Picasso;
 
 import org.json.JSONArray;
@@ -66,17 +84,22 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class HistrionMainActivity extends AppCompatActivity {
 
     private String autoInstallChannel; // default DNAP Channel
+    JSONObject autoSaveCacheTextFields = new JSONObject();
+    private BARCODESCANMODE barcodeScanMode;
 
     public class PERSONA_REFERENCES {
         public static final String DNAP_FEEDBACK_PERSONA_UUID = "bb765c31-6959-49d0-b192-6c83bdab5cb4";
@@ -92,6 +115,7 @@ public class HistrionMainActivity extends AppCompatActivity {
     private String latitute;
     private HashMap<String, String[]> gpsCache = new HashMap<>();
     private LinearLayout controllerRootView;
+
 
     class DataFiles {
         public String Image;
@@ -117,6 +141,17 @@ public class HistrionMainActivity extends AppCompatActivity {
     private FileSelectionParams currentFileSelectionParams;
     private HashMap<String, CameraSelectionParams> cameraSelectionMap = new HashMap<>();
     private CameraSelectionParams currentCameraSelectionParams;
+
+    private HashMap<String, TextView> barcodeFieldMap = new HashMap<>();
+    private String activeBarCodeField;
+    private HashMap<String, Integer> playerSeekMap = new HashMap<String, Integer>();
+    private HashMap<String, MediaPlayer> playerFieldMap = new HashMap<>();
+
+    private HashMap<String, ArrayList<HashMap<String, String>>> fieldLogicTriggerRegister = new HashMap<>();
+    private HashMap<String, View> fieldViewMap = new HashMap<>();
+    private HashMap<String, ArrayAdapter> refreshAdapterRegistry = new HashMap<>();
+    private JSONObject cloneAct;
+    private HashMap<String, TextView> gpsFieldMap = new HashMap<>();
 
     private DBAdapter adapter;
     private Handler handler;
@@ -162,6 +197,7 @@ public class HistrionMainActivity extends AppCompatActivity {
         if(intent.hasExtra(PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL)){
             try {
                 autoInstallChannel = intent.getStringExtra(PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL);
+                Utility.setSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, autoInstallChannel, this);
             }catch (Exception e){
                 Utility.showAlert("Invalid Channel", "The Channel you tried to subscribe to seems be invalid! Contact app developers to rectify this.", this);
             }
@@ -264,24 +300,17 @@ public class HistrionMainActivity extends AppCompatActivity {
 
 
     private void checkSubscriptionChannels() {
-        String subscriptionChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_CHANNELS, autoInstallChannel, this);
-        String autoInstallChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, autoInstallChannel, this);
-        boolean allowAutoInstall = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_CHECK_AUTO_INSTALL_FROM_CHANNEL, true, this);
-        if((subscriptionChannelSpec == null) && (autoInstallChannelSpec == null))
+        String autoInstallChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, null, this);
+        if((autoInstallChannelSpec == null))
             return;
 
         HashMap<String,Boolean> channelAuto = new HashMap<>();
 
-        if(subscriptionChannelSpec != null) {
-            ArrayList<String> channels = parseSubscriptionChannels(subscriptionChannelSpec);
-            for(String chan: channels)
-                channelAuto.put(chan,false);
-        }
 
         if(autoInstallChannelSpec != null) {
             ArrayList<String> channels = parseSubscriptionChannels(autoInstallChannelSpec);
             for(String chan: channels)
-                channelAuto.put(chan,allowAutoInstall? true: false);
+                channelAuto.put(chan,false);
         }
 
         if(channelAuto.size() > 0){
@@ -652,6 +681,8 @@ public class HistrionMainActivity extends AppCompatActivity {
 
         JSONObject act = new JSONObject();
         JSONArray fields = Persona.appFields(activePersona);
+        String activePersonaUUID = Persona.getAppUUID(activePersona);
+
         for(int f=0; f < fields.length(); f++){
             JSONObject field = null;
             try {
@@ -698,6 +729,12 @@ public class HistrionMainActivity extends AppCompatActivity {
             } catch (JSONException e) {
                 e.printStackTrace();
             }
+
+            // remove auto-save value for this field if any...
+            String textKEY = String.format("%s__%s", activePersonaUUID,Persona.getFieldCId(field));
+            if(autoSaveCacheTextFields.has(textKEY)){
+                autoSaveCacheTextFields.remove(textKEY);
+            }
         }
 
         // we want to include the persona, so the act can later be validated against it...
@@ -707,26 +744,41 @@ public class HistrionMainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
+        // we want to include the Observer Profile ID -- encrypted, so we can know who posted the data...
 
-        // to keep with the practice in the web historion, we include a current timestamp to have a means to know globally, when this act was created.
+        if(Utility.hasSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AC_NAME, this) || Utility.hasSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AC_PHONE, this)){
+            JSONObject profile = new JSONObject();
+
+            try {
+                act.put("OBSERVER", Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AC_NAME,"", this));
+                act.put("OBSERVER-ID", Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AC_PHONE,"", this));
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        // to keep with the practice in the web histrion, we include a current timestamp to have a means to know globally, when this act was created.
         try {
-            String val  = Utility.currentTimestampUTCISO();
-            act.put(Persona.KEYS.CACHE_TIMESTAMP, val );
+            act.put(Persona.KEYS.CACHE_TIMESTAMP, Utility.currentTimestampUTCISO());
         } catch (JSONException e) {
             e.printStackTrace();
         }
 
-
-        // Make this mandatory...
-        try {
-            act.put(Persona.KEYS.CACHE_RID,String.format("%s-%s", getDeviceID(), act.get(Persona.KEYS.CACHE_TIMESTAMP)));
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
-
+        // update auto-save cache...
+        updateAutoSaveTextFields(autoSaveCacheTextFields);
 
         return act;
     }
+
+    private void updateAutoSaveTextFields(JSONObject autoSaveCache) {
+        if (adapter.existsDictionaryKey(Utility.DB_KEYS.AUTO_SAVE)){
+            adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(Utility.DB_KEYS.AUTO_SAVE, autoSaveCache.toString()));
+        }else {
+            adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(Utility.DB_KEYS.AUTO_SAVE, autoSaveCache.toString()));
+        }
+    }
+
 
 
     /*private Object readFieldValue(JSONObject field) {
@@ -1147,15 +1199,47 @@ public class HistrionMainActivity extends AppCompatActivity {
         LinearLayout fieldOuterContainer = (LinearLayout) inflater.inflate(R.layout.dnap_field_container, container, false);
         LinearLayout fieldInnerContainer = (LinearLayout) fieldOuterContainer.findViewById(R.id.fieldContainer);
 
+        String cloneVal = null;
+        if(cloneAct != null){
+            try {
+                String cid = field.getString(Persona.KEYS.CID);
+                cloneVal = cloneAct.getString(cid);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+
         try {
             switch (field.getString(Persona.KEYS.FIELD_TYPE)){
                 case Persona.FieldTypes.TEXT: {
 
                     TextView label = new TextView(this);
-                    EditText editText = new EditText(this);
+                    final EditText editText = new EditText(this);
                     editText.setInputType(InputType.TYPE_CLASS_TEXT);
                     // instead of setId as done up until this point, using tags seems to be the more robust approach for our dynamic views
                     editText.setTag(Persona.getFieldCId(field));
+
+                    editText.addTextChangedListener(new TextWatcher() {
+
+                        @Override
+                        public void afterTextChanged(Editable s) {}
+
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start,
+                                                      int count, int after) {
+                        }
+
+                        @Override
+                        public void onTextChanged(CharSequence s, int start,
+                                                  int before, int count) {
+
+                            autoSaveTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText.getText().toString());
+
+                        }
+                    });
+                    // in case previous edit session had crashed or been closed prematurely, this will restore any auto
+                    // saved text...
+                    autoRestoreTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText);
 
                     label.setText(field.getString(Persona.KEYS.LABEL));
                     label.setTextColor(personaTheme.ContrastingColor);
@@ -1187,14 +1271,41 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        editText.setText(cloneVal);
+                    }
                     break;
                 }
                 case Persona.FieldTypes.NUMBER: {
                     TextView label = new TextView(this);
-                    EditText editText = new EditText(this);
-                    editText.setInputType(InputType.TYPE_CLASS_NUMBER);
+                    final EditText editText = new EditText(this);
+                    editText.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);
                     editText.setTag(Persona.getFieldCId(field));
                     editText.setTextColor(personaTheme.ContrastingColor);
+
+                    editText.addTextChangedListener(new TextWatcher() {
+
+                        @Override
+                        public void afterTextChanged(Editable s) {}
+
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start,
+                                                      int count, int after) {
+                        }
+
+                        @Override
+                        public void onTextChanged(CharSequence s, int start,
+                                                  int before, int count) {
+                            if(s.length() > 0){
+                                autoSaveTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText.getText().toString());
+                            }
+
+                        }
+                    });
+                    // in case previous edit session had crashed or been closed prematurely, this will restore any auto
+                    // saved text...
+                    autoRestoreTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText);
 
 
                     label.setText(field.getString(Persona.KEYS.LABEL));
@@ -1227,13 +1338,40 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        editText.setText(cloneVal);
+                    }
                     break;
                 }
                 case  Persona.FieldTypes.PARAGRAPH: {
                     TextView label = new TextView(this);
-                    EditText editText = new EditText(this);
+                    final EditText editText = new EditText(this);
                     editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
                     editText.setTag(Persona.getFieldCId(field));
+
+                    editText.addTextChangedListener(new TextWatcher() {
+
+                        @Override
+                        public void afterTextChanged(Editable s) {}
+
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start,
+                                                      int count, int after) {
+                        }
+
+                        @Override
+                        public void onTextChanged(CharSequence s, int start,
+                                                  int before, int count) {
+
+                            autoSaveTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText.getText().toString());
+
+
+                        }
+                    });
+                    // in case previous edit session had crashed or been closed prematurely, this will restore any auto
+                    // saved text... useful as these text fields can be used for writing/editing long texts...
+                    autoRestoreTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText);
 
 
                     label.setText(field.getString(Persona.KEYS.LABEL));
@@ -1265,15 +1403,42 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        editText.setText(cloneVal);
+                    }
                     break;
                 }
                 case  Persona.FieldTypes.EMAIL: {
                     TextView label = new TextView(this);
-                    EditText editText = new EditText(this);
+                    final EditText editText = new EditText(this);
                     editText.setInputType(InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
                     editText.setTag(Persona.getFieldCId(field));
                     editText.setTextColor(Utility.getContrastVersionForColor(personaTheme.ContrastingColor));
 
+                    editText.addTextChangedListener(new TextWatcher() {
+
+                        @Override
+                        public void afterTextChanged(Editable s) {}
+
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start,
+                                                      int count, int after) {
+                        }
+
+                        @Override
+                        public void onTextChanged(CharSequence s, int start,
+                                                  int before, int count) {
+
+                            autoSaveTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText.getText().toString());
+
+
+                        }
+                    });
+                    // in case previous edit session had crashed or been closed prematurely, this will restore any auto
+                    // saved text...
+                    autoRestoreTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText);
+
                     label.setText(field.getString(Persona.KEYS.LABEL));
                     label.setTextColor(personaTheme.ContrastingColor);
                     label.setLayoutParams(llp);
@@ -1303,14 +1468,41 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        editText.setText(cloneVal);
+                    }
                     break;
                 }
                 case  Persona.FieldTypes.WEBSITE:{
                     TextView label = new TextView(this);
-                    EditText editText = new EditText(this);
+                    final EditText editText = new EditText(this);
                     editText.setTag(Persona.getFieldCId(field));
                     editText.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
                     editText.setTextColor(Utility.getContrastVersionForColor(personaTheme.ContrastingColor));
+
+                    editText.addTextChangedListener(new TextWatcher() {
+
+                        @Override
+                        public void afterTextChanged(Editable s) {}
+
+                        @Override
+                        public void beforeTextChanged(CharSequence s, int start,
+                                                      int count, int after) {
+                        }
+
+                        @Override
+                        public void onTextChanged(CharSequence s, int start,
+                                                  int before, int count) {
+
+                            autoSaveTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText.getText().toString());
+
+
+                        }
+                    });
+                    // in case previous edit session had crashed or been closed prematurely, this will restore any auto
+                    // saved text...
+                    autoRestoreTextField(Persona.getAppUUID(activePersona), Persona.getFieldCId(field), editText);
 
                     label.setText(field.getString(Persona.KEYS.LABEL));
                     label.setTextColor(personaTheme.ContrastingColor);
@@ -1341,6 +1533,10 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        editText.setText(cloneVal);
+                    }
                     break;
                 }
                 case  Persona.FieldTypes.TIME:{
@@ -1377,6 +1573,19 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        String[] parts = cloneVal.split(":");
+                        if(parts.length == 2) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                timePicker.setHour(Integer.parseInt(parts[0]));
+                                timePicker.setMinute(Integer.parseInt(parts[1]));
+                            } else {
+                                timePicker.setCurrentHour(Integer.parseInt(parts[0]));
+                                timePicker.setCurrentMinute(Integer.parseInt(parts[1]));
+                            }
+                        }
+                    }
                     break;
                 }
                 case  Persona.FieldTypes.DATE:{
@@ -1384,6 +1593,8 @@ public class HistrionMainActivity extends AppCompatActivity {
                     DatePicker datePicker = new DatePicker(this);
                     datePicker.setCalendarViewShown(false);
                     datePicker.setTag(Persona.getFieldCId(field));
+                    datePicker.setBackgroundColor(Color.WHITE);
+                    datePicker.setLayoutParams(llp);
 
                     label.setText(field.getString(Persona.KEYS.LABEL));
                     label.setTextColor(personaTheme.ContrastingColor);
@@ -1414,7 +1625,13 @@ public class HistrionMainActivity extends AppCompatActivity {
                         //end description
                     }catch (Exception e){}
 
-
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        String[] parts = cloneVal.split("-");
+                        if(parts.length == 3) {
+                            datePicker.updateDate(Integer.parseInt(parts[0]), Integer.parseInt(parts[1])-1, Integer.parseInt(parts[2]));
+                        }
+                    }
                     break;
                 }
                 case  Persona.FieldTypes.RADIO:{
@@ -1432,11 +1649,18 @@ public class HistrionMainActivity extends AppCompatActivity {
                         JSONObject fieldOption = options.getJSONObject(i);
                         rb[i]  = new RadioButton(this);
                         rg.addView(rb[i]); //the RadioButtons are added to the radioGroup instead of the layout
-                        rb[i].setText(fieldOption.getString(Persona.KEYS.LABEL));
+                        String optionVal = fieldOption.getString(Persona.KEYS.LABEL);
+                        rb[i].setText(optionVal);
                         rb[i].setTextColor(personaTheme.ContrastingColor);
                         //rb[i].setTag(Integer.parseInt(String.format("%s%s",Persona.getFieldId(field),i)));
-                        if(fieldOption.getBoolean(Persona.KEYS.CHECKED)){
-                            rb[i].setChecked(true);
+                        if(cloneVal != null){
+                            if(optionVal.equals(cloneVal)){
+                                rb[i].setChecked(true);
+                            }
+                        }else { // only if we aren't in edit mode...
+                            if (fieldOption.getBoolean(Persona.KEYS.CHECKED)) {
+                                rb[i].setChecked(true);
+                            }
                         }
                     }
 
@@ -1449,6 +1673,9 @@ public class HistrionMainActivity extends AppCompatActivity {
                     fieldInnerContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
                     fieldInnerContainer.addView(label);
                     fieldInnerContainer.addView(rg);
+
+                    //register for skip logic handlers
+                    registerForSkipLogic(rg, field);
 
                     try{
                         // description
@@ -1468,6 +1695,7 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
                     break;
                 }
                 case  Persona.FieldTypes.CHECK_BOXES:{
@@ -1505,19 +1733,36 @@ public class HistrionMainActivity extends AppCompatActivity {
                     final CheckBox[] checkBoxes = new CheckBox[options.length()];
                     checkBoxMap.put(Persona.getFieldCId(field),checkBoxes); // to help track which checkboxes belong to which field...
 
+                    ArrayList<String> cloneOpts = new ArrayList<>();
+                    if(cloneVal != null){
+                        String[] parts = cloneVal.split(";");
+                        for(int p = 0; p < parts.length; p++)
+                            cloneOpts.add(parts[p].replaceAll("\\\"","\"")
+                                    .replaceAll("^\"","")
+                                    .replaceAll("\"$",""));
+                    }
+
                     for(int i=0; i<options.length(); i++){
                         JSONObject fieldOption = options.getJSONObject(i);
                         checkBoxes[i]  = new CheckBox(this);
                         fieldInnerContainer.addView(checkBoxes[i]);
-                        checkBoxes[i].setText(fieldOption.getString(Persona.KEYS.LABEL));
+                        String optionVal = fieldOption.getString(Persona.KEYS.LABEL);
+                        checkBoxes[i].setText(optionVal);
                         checkBoxes[i].setTextColor(personaTheme.ContrastingColor);
                         //checkBoxes[i].setTag(Integer.parseInt(String.format("%s%s",Persona.getFieldId(field),i)));
-                        if(fieldOption.getBoolean(Persona.KEYS.CHECKED)){
-                            checkBoxes[i].setChecked(true);
+                        if(cloneVal != null){
+                            if(cloneOpts.contains(optionVal)){
+                                checkBoxes[i].setChecked(true);
+                            }
+                        }else { // only if we aren't in edit mode...
+                            if(fieldOption.getBoolean(Persona.KEYS.CHECKED)){
+                                checkBoxes[i].setChecked(true);
+                            }
                         }
                     }
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
                     break;
                 }
                 case  Persona.FieldTypes.DROPDOWN:{
@@ -1526,22 +1771,74 @@ public class HistrionMainActivity extends AppCompatActivity {
                     JSONObject fieldOptions = Persona.getFieldOptions(field);
                     JSONArray options = fieldOptions.getJSONArray(Persona.KEYS.OPTIONS);
 
-                    final ArrayList<String> values = new ArrayList<>();
-                    Spinner spinner = new Spinner(this); //create the RadioGroup
+                    final Spinner spinner = new Spinner(this); //create the RadioGroup
                     spinner.setTag(Persona.getFieldCId(field));
 
                     Integer defaultPosition = null;
-                    for(int i=0; i<options.length(); i++){
-                        JSONObject fieldOption = options.getJSONObject(i);
-                        values.add(fieldOption.getString(Persona.KEYS.LABEL));
-                        if(fieldOption.getBoolean(Persona.KEYS.CHECKED)){
-                            defaultPosition = i;
+                    boolean dataUsingMeta = false;
+                    String meta = null;
+
+                    if(Persona.fieldHasMeta(field)) {
+                        // use the URL in the meta field to populate the value list...
+                        meta = Persona.getFieldMeta(field);
+                        if (Utility.isURL(meta)) {
+                            dataUsingMeta = true;
                         }
+
                     }
 
-                    ArrayAdapter<String> stringArrayAdapter = new ArrayAdapter<String>(this,
-                            android.R.layout.simple_spinner_item, values);
-                    spinner.setAdapter(stringArrayAdapter);
+                    if(dataUsingMeta){
+                        Uri valuesURI = Uri.parse(meta);
+                        if (Utility.isNetworkAvailable(this)) {
+                            final String finalCloneVal = cloneVal;
+                            Utility.getHTTP(this, valuesURI.toString(), new ParametricCallback() {
+                                @Override
+                                public void call(String data) {
+                                    // EXPECTED: [VAL,VAL,VAL,...]
+                                    initDynamicSpinnerFieldData(data, spinner, field, finalCloneVal);
+                                    cachePersonaFieldData(Persona.getAppUUID(activePersona), Persona.getFieldCId(field),data);
+                                }
+                            }, new ParametricCallback() {
+                                @Override
+                                public void call(String error) {
+
+                                }
+                            });
+                        } else {
+                            // no connectivity, let's try to use cache
+                            String data  = fetchCachedPersonaFieldData(Persona.getAppUUID(activePersona), Persona.getFieldCId(field));
+                            if(data == null) {
+                                Utility.showToast(String.format("Sorry, but there is no cached data for the dynamic field [%s].\nYou will need to reload this persona at least once, while there is an active data connection,\nfor you to be able to use it offline later.",
+                                        field.getString(Persona.KEYS.LABEL)), HistrionMainActivity.this, Toast.LENGTH_LONG);
+                            } else {
+                                initDynamicSpinnerFieldData(data, spinner, field, cloneVal);
+                            }
+                        }
+                    }else {
+
+                        final ArrayList<String> values = new ArrayList<>();
+                        for (int i = 0; i < options.length(); i++) {
+                            JSONObject fieldOption = options.getJSONObject(i);
+                            String optionVal = fieldOption.getString(Persona.KEYS.LABEL);
+                            values.add(optionVal);
+                            if(cloneVal != null){
+                                if (cloneVal.equals(optionVal)) {
+                                    defaultPosition = i;
+                                }
+                            }else {
+                                if (fieldOption.getBoolean(Persona.KEYS.CHECKED)) {
+                                    defaultPosition = i;
+                                }
+                            }
+                        }
+
+                        ArrayAdapter<String> stringArrayAdapter = new ArrayAdapter<String>(this,
+                                android.R.layout.simple_spinner_item, values);
+                        spinner.setAdapter(stringArrayAdapter);
+                        refreshAdapterRegistry.put(Persona.getLeanFieldCId(field), stringArrayAdapter);
+                    }
+
+
 
                     if(defaultPosition != null)
                         spinner.setSelection(defaultPosition);
@@ -1587,6 +1884,7 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
                     break;
                 }
                 case  Persona.FieldTypes.FILE:{
@@ -1604,6 +1902,8 @@ public class HistrionMainActivity extends AppCompatActivity {
 
                     btnContainer.addView(btnSelectFile);
                     btnContainer.addView(labelSelectedFile);
+
+                    labelSelectedFile.setMaxHeight(100);
 
                     btnSelectFile.setOnClickListener(new View.OnClickListener() {
                         @Override
@@ -1641,6 +1941,13 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        labelSelectedFile.setText(cloneVal);
+                        FileSelectionParams fileSelectionParams = new FileSelectionParams(Persona.getFieldCId(field),labelSelectedFile);
+                        currentFileSelectionParams = fileSelectionParams;
+                        fileSelectionMap.put(Persona.getFieldCId(field),fileSelectionParams);
+                    }
                     break;
                 }
                 case  Persona.FieldTypes.CAMERA:{
@@ -1653,7 +1960,7 @@ public class HistrionMainActivity extends AppCompatActivity {
                     btnContainer.setOrientation(LinearLayout.HORIZONTAL);
 
                     final ImageButton btnSelectFile = new ImageButton(this);
-                    btnSelectFile.setImageResource(R.drawable.ic_camera);
+                    btnSelectFile.setImageResource(R.mipmap.ic_camera);
                     final TextView labelSelectedFile = new TextView(this);
 
                     btnContainer.addView(btnSelectFile);
@@ -1694,36 +2001,185 @@ public class HistrionMainActivity extends AppCompatActivity {
                     }catch (Exception e){}
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+
+                    // also, check that we have the camera access permission or request for it
+                    getOrRequestCameraPermission();
+                    if(cloneVal != null){
+                        btnSelectFile.setTag(cloneVal);
+                        Bitmap clonedImage = Utility.bitmapFromDataUri(cloneVal);
+                        if(clonedImage != null){
+                            btnSelectFile.setImageBitmap(clonedImage);
+                            btnSelectFile.setScaleType(ImageView.ScaleType.FIT_XY);
+
+                            CameraSelectionParams cameraSelectionParams = new CameraSelectionParams(null, Persona.getFieldCId(field), btnSelectFile);
+                            currentCameraSelectionParams = cameraSelectionParams;
+                            cameraSelectionMap.put(Persona.getFieldCId(field),cameraSelectionParams);
+                        }
+                    }
                     break;
                 }
                 case Persona.FieldTypes.SHOW_IMAGE:{
                     TextView label = new TextView(this);
                     ImageView imageView = new ImageView(this);
                     imageView.setTag(Persona.getFieldCId(field));
-                    label.setText(field.getString(Persona.KEYS.LABEL));
-                    label.setTextColor(personaTheme.ContrastingColor);
-                    label.setLayoutParams(llp);
+                    String labelStr = field.getString(Persona.KEYS.LABEL).trim();
+                    if(!labelStr.isEmpty()) {
+                        label.setText(labelStr);
+                        label.setTextColor(Color.BLACK);
+                        label.setLayoutParams(llp);
+                        fieldInnerContainer.addView(label);
+                    }
 
                     LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);;
-                    llpIndent.setMargins(30, 10, 0, 10); // llp.setMargins(left, top, right, bottom);
+                    llpIndent.setMargins(2, 2, 2, 2); // llp.setMargins(left, top, right, bottom);
+                    llpIndent.gravity = Gravity.CENTER_HORIZONTAL;
                     imageView.setLayoutParams(llpIndent);
 
+
                     fieldOuterContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
-                    fieldInnerContainer.setBackgroundColor(personaTheme.ThemeColor);
-                    fieldInnerContainer.addView(label);
+                    fieldInnerContainer.setBackgroundColor(Color.WHITE);
+
                     fieldInnerContainer.addView(imageView);
 
                     JSONObject fieldOptions = Persona.getFieldOptions(field);
                     String uri = fieldOptions.getString(Persona.KEYS.DESCRIPTION);
-                    Picasso.with(this)
+                    Glide.with(this)
                             .load(uri)
                             .placeholder(R.drawable.loading)
-                            .error(R.drawable.notify)
+                            .error(R.drawable.erorr)
                             .into(imageView);
 
 
 
                     container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    break;
+                }
+                case Persona.FieldTypes.SHOW_VIDEO:{
+                    TextView label = new TextView(this);
+                    final VideoView videoView = new VideoView(this);
+                    videoView.setTag(Persona.getFieldCId(field));
+                    label.setText(field.getString(Persona.KEYS.LABEL));
+                    label.setTextColor(personaTheme.ContrastingColor);
+                    label.setLayoutParams(llp);
+
+                    LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, 300);
+                    llpIndent.setMargins(10, 10, 0, 10); // llp.setMargins(left, top, right, bottom);
+                    llpIndent.gravity = Gravity.CENTER;
+                    videoView.setLayoutParams(llpIndent);
+
+                    fieldOuterContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    fieldInnerContainer.setBackgroundColor(personaTheme.ThemeColor);
+                    fieldInnerContainer.addView(label);
+                    fieldInnerContainer.addView(videoView);
+
+                    JSONObject fieldOptions = Persona.getFieldOptions(field);
+                    String uri = fieldOptions.getString(Persona.KEYS.DESCRIPTION);
+
+                    Uri video = Uri.parse(uri);
+                    videoView.setVideoURI(video);
+                    videoView.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+                        @Override
+                        public void onPrepared(MediaPlayer mp) {
+                            mp.setLooping(true);
+                        }
+                    });
+                    // adding media controller allows user to pause or resume video playback
+                    videoView.setMediaController(new MediaController(this));
+                    videoView.start();
+
+                    container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    break;
+                }
+                case Persona.FieldTypes.PLAY_AUDIO:{
+                    TextView label = new TextView(this);
+                    final ImageButton playButton = new ImageButton(this);
+                    final String fieldID = Persona.getFieldCId(field);
+                    playButton.setTag(fieldID);
+                    final String file_title = field.getString(Persona.KEYS.LABEL);
+                    label.setText(file_title);
+                    label.setTextColor(personaTheme.ContrastingColor);
+                    label.setLayoutParams(llp);
+
+                    playButton.setImageResource(R.mipmap.ic_play);
+
+                    LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    llpIndent.setMargins(10, 10, 0, 10); // llp.setMargins(left, top, right, bottom);
+                    playButton.setLayoutParams(llpIndent);
+
+                    fieldOuterContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    fieldInnerContainer.setBackgroundColor(personaTheme.ThemeColor);
+                    fieldInnerContainer.addView(label);
+                    fieldInnerContainer.addView(playButton);
+
+                    JSONObject fieldOptions = Persona.getFieldOptions(field);
+                    final String uri = fieldOptions.getString(Persona.KEYS.DESCRIPTION);
+
+                    final boolean[] isFileAccessible = {true};
+
+                    class CheckURLReacheableTask extends AsyncTask<String, Void, Boolean> {
+
+                        @Override
+                        protected Boolean doInBackground(String... params) {
+                            return Utility.checkURLAccessible(uri);
+                        }
+
+                        @Override
+                        protected void onPostExecute(Boolean result) {
+                            isFileAccessible[0] = result;
+                            if(!isFileAccessible[0]){
+                                playButton.setImageResource(R.mipmap.ic_error);
+                                playButton.setEnabled(false);
+                                Utility.showToast(String.format("IO Error with Media: %s", uri), HistrionMainActivity.this);
+                            }
+                        }
+                    }
+
+                    new CheckURLReacheableTask().execute(uri);
+
+
+                    playButton.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            if(!isFileAccessible[0]){
+                                return;
+                            }
+
+                            boolean playerStateOn =  false;
+
+                            try{
+                                playerStateOn = (boolean) playButton.getTag();
+                            }catch (Exception e){}
+
+                            if(!playerStateOn) {
+                                Utility.showToast("Wait as media loads...", HistrionMainActivity.this, Toast.LENGTH_LONG);
+                                // play
+                                int seekPosition = 0;
+                                if(playerSeekMap.containsKey(fieldID)){
+                                    seekPosition = playerSeekMap.get(fieldID);
+                                }
+                                playButton.setTag(true);
+                                playAudioURI(seekPosition, uri, getApplicationContext(), fieldID);
+                                playerSeekMap.put(fieldID,0);
+                                playButton.setImageResource(R.mipmap.ic_pause);
+
+                                Utility.showToast(String.format("Playing: %s",file_title), getApplicationContext());
+
+                            }else {
+                                // pause
+                                pausePlaying(fieldID);
+                                playButton.setImageResource(R.mipmap.ic_play);
+                                playButton.setTag(false);
+
+                                Utility.showToast(String.format("PAUSED: %s",file_title), getApplicationContext());
+                            }
+                        }
+                    });
+
+                    container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
                     break;
                 }
                 case Persona.FieldTypes.SHOW_INFO:{
@@ -1735,13 +2191,152 @@ public class HistrionMainActivity extends AppCompatActivity {
                     label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
                     label.setLayoutParams(llp);
                     label.setTypeface(null, Typeface.BOLD);
+                    fieldInnerContainer.addView(label);
 
                     JSONObject fieldOptions = Persona.getFieldOptions(field);
-                    infoView.setText(fieldOptions.getString(Persona.KEYS.DESCRIPTION));
+                    try {
+                        infoView.setText(fieldOptions.getString(Persona.KEYS.DESCRIPTION));
+                        infoView.setTextColor(personaTheme.ContrastingColor);
+                        infoView.setTypeface(null, Typeface.ITALIC);
+
+
+                        LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);;
+                        llpIndent.setMargins(30, 10, 0, 10); // llp.setMargins(left, top, right, bottom);
+                        infoView.setLayoutParams(llpIndent);
+                        fieldInnerContainer.addView(infoView);
+                    }catch (Exception e){}
+
+
+                    fieldOuterContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    fieldInnerContainer.setBackgroundColor(personaTheme.ThemeColor);
+
+                    container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    break;
+                }
+                case Persona.FieldTypes.SHOW_URL:{
+                    TextView label = new TextView(this);
+                    TextView infoView = new TextView(this);
+
+                    String urlLabel  = field.getString(Persona.KEYS.LABEL);
+
+                    label.setText(field.getString(Persona.KEYS.LABEL));
+                    label.setTextColor(personaTheme.ContrastingColor);
+                    label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+                    label.setLayoutParams(llp);
+                    label.setTypeface(null, Typeface.BOLD);
+
+                    JSONObject fieldOptions = Persona.getFieldOptions(field);
+                    final String url = fieldOptions.getString(Persona.KEYS.DESCRIPTION);
+
+                    infoView.setText(urlLabel);
+                    infoView.setTextColor(personaTheme.ContrastingColor);
+                    infoView.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    infoView.setTypeface(null, Typeface.NORMAL);
+                    infoView.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View view) {
+                            openURL(url);
+                        }
+                    });
+                    infoView.setGravity(Gravity.CENTER);
+
+                    infoView.setPadding(30,10,30,10);
+
+                    LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);;
+                    llpIndent.setMargins(30, 10, 0, 10); // llp.setMargins(left, top, right, bottom);
+                    infoView.setLayoutParams(llpIndent);
+
+                    fieldOuterContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    fieldInnerContainer.setBackgroundColor(personaTheme.ContrastingColor);
+                    //fieldInnerContainer.addView(label);
+
+                    fieldInnerContainer.setOrientation(LinearLayout.HORIZONTAL);
+
+                    ImageView urlIcon = new ImageView(this);
+                    urlIcon.setImageResource(R.drawable.link);
+                    urlIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+
+                    LinearLayout.LayoutParams layoutParams=new LinearLayout.LayoutParams(100, 100);
+                    layoutParams.gravity=Gravity.CENTER;
+                    urlIcon.setLayoutParams(layoutParams);
+
+                    fieldInnerContainer.addView(urlIcon);
+                    fieldInnerContainer.setPadding(4,4,4,4);
+                    LinearLayout.LayoutParams llpIndent2 = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);;
+                    llpIndent2.setMargins(10, 10, 10, 10); // llp.setMargins(left, top, right, bottom);
+                    fieldInnerContainer.setLayoutParams(llpIndent2);
+
+                    fieldInnerContainer.addView(infoView);
+
+                    container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    break;
+                }
+                case Persona.FieldTypes.SHOW_WEBSITE:{
+                    TextView label = new TextView(this);
+                    ScrollableWebView urlWebView = new ScrollableWebView(this);
+
+                    label.setText(field.getString(Persona.KEYS.LABEL));
+                    label.setTextColor(personaTheme.ContrastingColor);
+                    label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+                    label.setLayoutParams(llp);
+                    label.setTypeface(null, Typeface.BOLD);
+
+                    JSONObject fieldOptions = Persona.getFieldOptions(field);
+                    final String url = fieldOptions.getString(Persona.KEYS.DESCRIPTION);
+
+                    fieldOuterContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    fieldInnerContainer.setBackgroundColor(personaTheme.ThemeColor);
+                    fieldInnerContainer.addView(label);
+
+                    LinearLayout.LayoutParams layoutParams=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+                    layoutParams.gravity=Gravity.CENTER;
+                    urlWebView.setLayoutParams(layoutParams);
+                    urlWebView.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    fieldInnerContainer.addView(urlWebView);
+
+
+                    urlWebView.setWebChromeClient(new SpecialChromeClient());
+                    urlWebView.setWebViewClient(new WebViewClient());
+
+                    WebSettings mWebSettings = urlWebView.getSettings();
+                    mWebSettings.setJavaScriptEnabled(true);
+                    mWebSettings.setJavaScriptCanOpenWindowsAutomatically(false);
+                    // fixing scrolling
+                    mWebSettings.setLoadWithOverviewMode(true);
+                    mWebSettings.setUseWideViewPort(true);
+                    mWebSettings.setSupportZoom(true);
+                    mWebSettings.setBuiltInZoomControls(true);
+
+
+                    urlWebView.loadUrl(url);
+
+                    LinearLayout.LayoutParams layoutParams2=new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int)Math.round(.5 * Resources.getSystem().getDisplayMetrics().heightPixels));
+                    layoutParams2.gravity=Gravity.CENTER;
+                    fieldOuterContainer.setLayoutParams(layoutParams2);
+
+                    container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    break;
+                }
+                case Persona.FieldTypes.DEVICE_GPS:{
+
+                    TextView label = new TextView(this);
+                    TextView infoView = new TextView(this);
+
+                    label.setText(field.getString(Persona.KEYS.LABEL));
+                    label.setTextColor(personaTheme.ContrastingColor);
+                    label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+                    label.setLayoutParams(llp);
+                    label.setTypeface(null, Typeface.BOLD);
+
+                    JSONObject fieldOptions = Persona.getFieldOptions(field);
+                    infoView.setText("Waiting for GPS...");
                     infoView.setTextColor(personaTheme.ContrastingColor);
                     infoView.setTypeface(null, Typeface.ITALIC);
 
-                    LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);;
+                    LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                     llpIndent.setMargins(30, 10, 0, 10); // llp.setMargins(left, top, right, bottom);
                     infoView.setLayoutParams(llpIndent);
 
@@ -1751,28 +2346,501 @@ public class HistrionMainActivity extends AppCompatActivity {
                     fieldInnerContainer.addView(infoView);
 
                     container.addView(fieldOuterContainer);
-                    break;
-                }
-                case Persona.FieldTypes.DEVICE_GPS:{
 
                     String field_id = Persona.getFieldCId(field);
-                    registerForGPS(field_id);
+                    registerForGPS(field_id, infoView);
 
+                    if(cloneVal != null){
+                        String[] parts = cloneVal.split(",");
+                        if(parts.length == 2) {
+                            gpsCache.put(field_id, parts);
+                            infoView.setText(cloneVal);
+                        }
+                    }
+
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
                     break;
                 }
-                /*case Persona.FieldTypes.BARCODE: {
-                    //TODO: implement barcode scanning...
+                case Persona.FieldTypes.BARCODE: {
+                    TextView label = new TextView(this);
+                    label.setText(field.getString(Persona.KEYS.LABEL));
+                    label.setTextColor(personaTheme.ContrastingColor);
+                    label.setLayoutParams(llp);
 
-                }*/
+                    LinearLayout btnContainer = new LinearLayout(this);
+                    btnContainer.setOrientation(LinearLayout.HORIZONTAL);
+                    btnContainer.setVerticalGravity(Gravity.CENTER_VERTICAL);
 
+                    final ImageButton btnScanCode = new ImageButton(this);
+                    btnScanCode.setImageResource(R.mipmap.ic_scan);
+                    final TextView labelScannedValue = new TextView(this);
+
+                    btnContainer.addView(btnScanCode);
+                    btnContainer.addView(labelScannedValue);
+
+                    labelScannedValue.setTextColor(personaTheme.ThemeColor);
+
+                    barcodeFieldMap.put(Persona.getFieldCId(field),labelScannedValue);
+
+                    btnScanCode.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            activeBarCodeField = Persona.getFieldCId(field);
+
+                            initBarCodeScanner(BARCODESCANMODE.FIELD);
+
+                        }
+                    });
+
+                    fieldOuterContainer.setBackgroundColor(personaTheme.ThemeColor);
+                    fieldInnerContainer.setBackgroundColor(personaTheme.ComplimentaryColor);
+                    fieldInnerContainer.addView(label);
+                    fieldInnerContainer.addView(btnContainer);
+
+                    try{
+                        // description
+                        JSONObject fieldOptions = Persona.getFieldOptions(field);
+                        String desc = fieldOptions.getString(Persona.KEYS.DESCRIPTION);
+                        if(desc.trim().length() > 0) {
+                            TextView infoView = new TextView(this);
+                            infoView.setText(desc);
+                            infoView.setTextColor(personaTheme.ContrastingColor);
+                            infoView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                            infoView.setTypeface(null, Typeface.ITALIC);
+                            LinearLayout.LayoutParams llpIndent = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                            llpIndent.setMargins(30, 5, 0, 10); // llp.setMargins(left, top, right, bottom);
+                            infoView.setLayoutParams(llpIndent);
+                            fieldOuterContainer.addView(infoView);
+                        }
+                        //end description
+                    }catch (Exception e){}
+
+                    container.addView(fieldOuterContainer);
+                    fieldViewMap.put(Persona.getLeanFieldCId(field),fieldOuterContainer);
+                    if(cloneVal != null){
+                        labelScannedValue.setText(cloneVal);
+                    }
+                    break;
+                }
+                case Persona.FieldTypes.HIDDEN: {
+                    // for now, we shall use this field type to intercept some
+                    // meta functions such as forcing sticky-acts on a persona
+                    String fieldName = field.getString(Persona.KEYS.LABEL);
+                    if(fieldName.equalsIgnoreCase(Persona.META_FIELD_NAME)) {
+                        JSONObject fieldOptions = Persona.getFieldOptions(field);
+                        String fieldValue = fieldOptions.getString(Persona.KEYS.DESCRIPTION);
+                        if(fieldValue.equalsIgnoreCase("ENABLE_STICKY_ACTS")){
+                            toggleStickyActs(activePersona, true);
+                        }
+                    }
+                    break;
+                }
+
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        handleFieldLogicRegistry(field);
+    }
+
+    private void openURL(String url) {
+        if(Persona.isPersonaURL(url)){
+            Utility.showToast("Persona detected. Loading...", this, Toast.LENGTH_LONG);
+            if (Utility.isNetworkAvailable(this)) {
+                loadPersonaFromURL(url);
+            }else {
+                // try to load persona using uuid in url...
+                String personaUUID = Persona.parsePersonaUUIDFromURL(url);
+                if(personaUUID != null) {
+                    loadPersonaFromUUID(personaUUID);
+                }
+            }
+            return;
+        }
+
+        try {
+            Utility.showToast("URL detected. Loading...", this, Toast.LENGTH_LONG);
+            Uri webpage = Uri.parse(url);
+            Intent myIntent = new Intent(Intent.ACTION_VIEW, webpage);
+            startActivity(myIntent);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "No application can handle this request. Please install a web browser or check your URL.",  Toast.LENGTH_LONG).show();
+            e.printStackTrace();
+        }
+    }
+
+    private void loadPersonaFromUUID(String personaUUID) {
+        JSONObject persona = getPersonaByUUID(personaUUID);
+        if(persona != null) {
+            loadNewPersona(persona);
+        }
+    }
+
+    private void loadPersonaFromURL(String personaURL) {
+        //TODO: this seems to be a route via which the gpsfield controls don't render properly... troubleshoot.
+        Uri url = Uri.parse(personaURL);
+        Utility.getHTTP(this, url.toString(), new ParametricCallback() {
+            @Override
+            public void call(String personaJSON) { // success
+                loadNewPersona(parsePersona(personaJSON));
+            }
+        }, new ParametricCallback() {
+            @Override
+            public void call(String status) { // error
+                Utility.showAlert("Failed to fetch Persona!", status, HistrionMainActivity.this);
+            }
+        });
+    }
+
+    private JSONObject getPersonaByUUID(String personaUUID) {
+
+        String appJSON = null;
+
+
+        if(adapter.existsDictionaryKey(Utility.DB_KEYS.PERSONA_DICTIONARY)){
+            try {
+                JSONObject knownPersonas =  new JSONObject(adapter.fetchDictionaryEntry(Utility.DB_KEYS.PERSONA_DICTIONARY));
+                appJSON = knownPersonas.getString(personaUUID);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        if(appJSON != null)
+        {
+            JSONObject persona = parsePersona(appJSON);
+            return  persona;
+        }else {
+            Utility.showToast("There is currently no cached persona with that UUID", this);
+        }
+
+        return  null;
+    }
+
+
+    public void pausePlaying(String fieldCId) {
+
+        if (!playerFieldMap.containsKey(fieldCId))
+            return;
+
+        MediaPlayer mediaPlayer = playerFieldMap.get(fieldCId);
+
+        mediaPlayer.pause();
+        playerSeekMap.put(fieldCId,
+                mediaPlayer.getCurrentPosition());
+    }
+
+    public MediaPlayer playAudioURI( int playSeekPosition, String uri, Context context, final String fieldCId) {
+
+        MediaPlayer mediaPlayer = null;
+
+        if (!playerFieldMap.containsKey(fieldCId))
+        {
+            mediaPlayer = new MediaPlayer();
+            playerFieldMap.put(fieldCId, mediaPlayer);
+
+            try {
+                mediaPlayer.setDataSource(uri);
+                mediaPlayer.prepare();
+            } catch (Exception e) {
+                e.printStackTrace();
+                Utility.showAlert("Audio Steaming Error", e.getMessage(), context);
+                return mediaPlayer;
+            }
+        } else {
+            mediaPlayer = playerFieldMap.get(fieldCId);
+            mediaPlayer.seekTo(playSeekPosition);
+        }
+
+        mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+
+            @Override
+            public void onCompletion(MediaPlayer mp) {
+                mp.stop();
+                mp.reset();
+                mp.release();
+                playerSeekMap.remove(fieldCId);// reset
+                playerFieldMap.remove(fieldCId);
+            }
+
+        });
+
+        mediaPlayer.start();
+        return mediaPlayer;
+    }
+
+
+    private boolean getOrRequestCameraPermission() {
+        if(hasPermissionCamera()){
+            return true;
+        }else {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 101);
+        }
+
+        return false;
+    }
+
+    private boolean hasPermissionCamera() {
+        int result = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
+        return result == PackageManager.PERMISSION_GRANTED;
+    }
+
+
+    private void cachePersonaFieldData(String appUUID, String fieldCId, String data) {
+        String textKEY = Persona.makeFieldDataCacheKEY(appUUID);
+        try {
+            if (adapter.existsDictionaryKey(textKEY)){
+                JSONObject jDataCache = new JSONObject(adapter.fetchDictionaryEntry(textKEY));
+                jDataCache.put(fieldCId, data);
+                adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(textKEY, jDataCache.toString()));
+            }else {
+                JSONObject jDataCache = new JSONObject();
+                jDataCache.put(fieldCId, data);
+                adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(textKEY, jDataCache.toString()));
             }
         } catch (JSONException e) {
             e.printStackTrace();
         }
     }
 
-    private void registerForGPS(String field_name) {
+    private void initDynamicSpinnerFieldData(String data, Spinner spinner, JSONObject field, String cloneVal) {
+        final ArrayList<String> values = new ArrayList<>();
+        JSONArray jValList = null;
+        try {
+            jValList = new JSONArray(data);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        ArrayList<String> _vals = Utility.JSONArrayToStrList(jValList);
+        int initialSelection = -1;
+        for (int i = 0; i < _vals.size(); i++) {
+            String optionVal = _vals.get(i);
+            values.add(optionVal);
+            if(cloneVal != null){
+                if(optionVal.equals(cloneVal))
+                    initialSelection = i;
+            }
+        }
+
+        ArrayAdapter<String> stringArrayAdapter = new ArrayAdapter<String>(HistrionMainActivity.this,
+                android.R.layout.simple_spinner_item, values);
+        spinner.setAdapter(stringArrayAdapter);
+        if(initialSelection >= 0) {
+            spinner.setSelection(initialSelection);
+        }
+        refreshAdapterRegistry.put(Persona.getLeanFieldCId(field), stringArrayAdapter);
+    }
+
+    private void initBarCodeScanner(BARCODESCANMODE mode) {
+        barcodeScanMode = mode;
+
+        IntentIntegrator integrator = new IntentIntegrator(this);
+        integrator.setDesiredBarcodeFormats(IntentIntegrator.ALL_CODE_TYPES);
+        integrator.setPrompt("Scan a CODE");
+        integrator.setBeepEnabled(true);
+        integrator.setBarcodeImageEnabled(true);
+        integrator.initiateScan();
+    }
+    private void toggleStickyActs(JSONObject persona, boolean stickyON) {
+        Gson gson = new Gson();
+
+        if(adapter.existsDictionaryKey(Persona.KEYS.STICKY_ACTS_ACTIVE_LIST)) {
+
+            String stickyONSetJSON = adapter.fetchDictionaryEntry(Persona.KEYS.STICKY_ACTS_ACTIVE_LIST);
+
+            Type founderSetType = new TypeToken<HashSet<String>>() {
+            }.getType();
+
+            HashSet<String> stickyONSet = gson.fromJson(stickyONSetJSON, founderSetType);
+
+            if (stickyON)
+                stickyONSet.add(Persona.getAppUUID(persona));
+            else
+                stickyONSet.remove(Persona.getAppUUID(persona));
+
+            adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(Persona.KEYS.STICKY_ACTS_ACTIVE_LIST, gson.toJson(stickyONSet)));
+
+        }else {
+
+            HashSet<String> stickyONSet = new HashSet<>();
+
+            if(stickyON)
+                stickyONSet.add(Persona.getAppUUID(persona));
+
+            adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(Persona.KEYS.STICKY_ACTS_ACTIVE_LIST, gson.toJson(stickyONSet)));
+        }
+    }
+
+    private void handleFieldLogicRegistry(JSONObject field) {
+        String meta = Persona.getFieldMeta(field);
+        if(meta != null){
+            if(meta.length() == 0)
+                return;
+
+            String fieldCID = Persona.getLeanFieldCId(field);
+            Pattern pattern = Pattern.compile("((show|hide)\\{([^{]+)\\})");
+            Matcher matcher = pattern.matcher(meta);
+            while (matcher.find()) {
+                String fullLogic = matcher.group(1);
+                String command = matcher.group(2);
+                String val = matcher.group(3);  // get the logic code
+                String[] parts = val.split(":");
+                if(parts.length == 2){
+                    String[] refs = parts[1].split("==");
+                    String targetFieldCID = refs[0];
+                    if(refs.length == 2){
+                        if(fieldLogicTriggerRegister.containsKey(targetFieldCID)){
+                            HashMap<String, String> targetFieldLogicMap = new HashMap<>();
+                            targetFieldLogicMap.put(fieldCID, fullLogic);
+                            fieldLogicTriggerRegister.get(targetFieldCID).add(targetFieldLogicMap);
+                        }else {
+                            fieldLogicTriggerRegister.put(targetFieldCID, new ArrayList<HashMap<String, String>>());
+                            HashMap<String, String> targetFieldLogicMap = new HashMap<>();
+                            targetFieldLogicMap.put(fieldCID, fullLogic);
+                            fieldLogicTriggerRegister.get(targetFieldCID).add(targetFieldLogicMap);
+                        }
+
+                        if(command.equalsIgnoreCase("show")){
+                            View targetView = fieldViewMap.get(fieldCID);
+                            targetView.setVisibility(View.INVISIBLE);
+                        }
+                        if(command.equalsIgnoreCase("hide")){
+                            View targetView = fieldViewMap.get(fieldCID);
+                            targetView.setVisibility(View.VISIBLE);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void registerForSkipLogic(RadioGroup rg, final JSONObject field) {
+        final String fieldCID = Persona.getLeanFieldCId(field);
+        rg.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup radioGroup, int i) {
+                String val = String.valueOf(readFieldValue(field));
+                if(fieldLogicTriggerRegister.containsKey(fieldCID)){
+                    ArrayList<HashMap<String, String>> registeredFieldLogic = fieldLogicTriggerRegister.get(fieldCID);
+                    for(HashMap<String,String> fieldLogicMap : registeredFieldLogic){
+                        for(String targetFieldCID : fieldLogicMap.keySet()){
+                            String logic = fieldLogicMap.get(targetFieldCID);
+                            processFieldLogic(targetFieldCID,logic,fieldCID,val);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    private void processFieldLogic(String targetFieldCID, String logic,String relatedFieldCID, String relatedFieldValue) {
+        String[] commands = logic.split(";"); // so we can handle show{on:c1==2};show{on:c5==YES}
+        for(int c = 0; c < commands.length; c ++){
+            String command = commands[c];
+
+            if(command.startsWith("show{")){
+                command = command.replaceFirst("show\\{", "");
+                command = command.replace("}","");
+                if(command.startsWith("on:")){
+                    command = command.replaceFirst("on:","");
+                    String[] parts = command.split("==");
+                    if(parts.length == 2){
+                        if(parts[0].equalsIgnoreCase(relatedFieldCID)){
+                            View targetView = fieldViewMap.get(targetFieldCID);
+                            if(relatedFieldValue.equalsIgnoreCase(parts[1])){
+                                targetView.setVisibility(View.VISIBLE);
+                                if(refreshAdapterRegistry.containsKey(targetFieldCID)){
+                                    refreshAdapterRegistry.get(targetFieldCID).notifyDataSetChanged();
+                                }
+                            }else{
+                                targetView.setVisibility(View.INVISIBLE);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if(command.startsWith("hide{")){
+                command = command.replaceFirst("hide\\{", "");
+                command = command.replace("}","");
+                if(command.startsWith("on:")){
+                    command = command.replaceFirst("on:","");
+                    String[] parts = command.split("==");
+                    if(parts.length == 2){
+                        if(parts[0].equalsIgnoreCase(relatedFieldCID)){
+                            View targetView = fieldViewMap.get(targetFieldCID);
+                            if(relatedFieldValue.equalsIgnoreCase(parts[1])){
+                                targetView.setVisibility(View.INVISIBLE);
+                            }else{
+                                targetView.setVisibility(View.VISIBLE);
+                                if(refreshAdapterRegistry.containsKey(targetFieldCID)){
+                                    refreshAdapterRegistry.get(targetFieldCID).notifyDataSetChanged();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+    }
+
+    private String fetchCachedPersonaFieldData(String appUUID, String fieldCId) {
+        String textKEY = Persona.makeFieldDataCacheKEY(appUUID);
+        try {
+            if (adapter.existsDictionaryKey(textKEY)){
+                JSONObject jDataCache = new JSONObject(adapter.fetchDictionaryEntry(textKEY));
+                if(jDataCache.has(fieldCId)){
+                    return jDataCache.getString(fieldCId);
+                }
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    private void autoRestoreTextField(String appUUID, String fieldCId, EditText editText) {
+        String textKEY = String.format("%s__%s", appUUID,fieldCId);
+        try {
+            if(autoSaveCacheTextFields.has(textKEY)){
+                editText.setText(autoSaveCacheTextFields.getString(textKEY));
+                return;
+            }
+            if (adapter.existsDictionaryKey(Utility.DB_KEYS.AUTO_SAVE)){
+                autoSaveCacheTextFields = new JSONObject(adapter.fetchDictionaryEntry(Utility.DB_KEYS.AUTO_SAVE));
+                if(autoSaveCacheTextFields.has(textKEY)){
+                    editText.setText(autoSaveCacheTextFields.getString(textKEY));
+                    return;
+                }
+            }else {
+                autoSaveCacheTextFields = new JSONObject();
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void autoSaveTextField(String appUUID, String fieldCId, String text) {
+        String textKEY = String.format("%s__%s", appUUID,fieldCId);
+        try {
+            autoSaveCacheTextFields.put(textKEY, text);
+            if (adapter.existsDictionaryKey(Utility.DB_KEYS.AUTO_SAVE)){
+                adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(Utility.DB_KEYS.AUTO_SAVE, autoSaveCacheTextFields.toString()));
+            }else {
+                adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(Utility.DB_KEYS.AUTO_SAVE, autoSaveCacheTextFields.toString()));
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void registerForGPS(String field_name, TextView infoView) {
         gpsSubscribers.add(field_name);
+        gpsFieldMap.put(field_name, infoView);
         //initGPS();
         if(checkLocationPermission()){
             initGPS();
@@ -1780,7 +2848,6 @@ public class HistrionMainActivity extends AppCompatActivity {
             Utility.showToast("After allowing the app to access location services, please try again.", this);
         }
     }
-
     private void initGPS() {
         try {
             trackGPSWithGPSProvider();
@@ -1980,6 +3047,59 @@ public class HistrionMainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
 
 
+        if(intent != null) {
+            IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, intent);
+            if (result != null) {
+                if (result.getContents() == null) {
+                    switch (barcodeScanMode){
+                        case PERSONA: {
+                            Utility.showToast("Scanning Persona was cancelled!", this, Toast.LENGTH_LONG);
+                            break;
+                        }
+                        case FIELD: {
+                            Utility.showToast("Scanning Barcode was cancelled!", this, Toast.LENGTH_LONG);
+                        }
+                    }
+
+                    return;
+                } else {
+
+                    if(barcodeScanMode == null){
+                        Utility.showToast("An error occured. Please try again.", this);
+                        return;
+                    }
+
+                    switch (barcodeScanMode){
+                        case PERSONA: {
+                            if (!Utility.isNetworkAvailable(this)) {
+                                Utility.showAlert(
+                                        "No Data Connection!",
+                                        "Sorry but there's not active data connection to proceed... \n\nNOTE: The Persona is fetched remotely via the embedded uri. Alternatively though, you can just obtain the *.persona file, and load it directly.",
+                                        R.mipmap.ic_no_network, this);
+                                return;
+                            }
+
+                            final String personaURI = result.getContents();
+                            loadPersonaFromURL(personaURI);
+
+                            break;
+                        }
+                        case FIELD:{
+
+                            final String scannedValue = result.getContents();
+                            barcodeFieldMap.get(activeBarCodeField).setText(scannedValue);
+                            break;
+                        }
+                    }
+
+
+
+                    return;
+                }
+            }
+        }
+
+
         switch (requestCode){
             case INTENT_MODE.CHOOSE_FILE_REQUESTCODE: {
                 if(intent == null) {
@@ -1990,6 +3110,22 @@ public class HistrionMainActivity extends AppCompatActivity {
                 currentFileSelectionParams.labelField.setText(selectedPath);
                 break;
             }
+            case INTENT_MODE.CHOOSE_PERSONA_FILE_REQUESTCODE: {
+                if(intent == null) {
+                    Utility.showToast("Failed to perform action", this);
+                    break;
+                }
+                //String selectedPath = intent.getDataString();
+
+                final Uri uri = intent.getData();
+
+                // Get the File path from the Uri
+                // Get the File path from the Uri
+                String selectedPath = FileUtils.getPath(this, uri);
+
+                loadNewPersonaFromPath(selectedPath);
+                break;
+            }
             case INTENT_MODE.CHOOSE_CAMERA_REQUESTCODE:{
                 Log.d(TAG, "Returned From Photo capture...");
 
@@ -1997,7 +3133,7 @@ public class HistrionMainActivity extends AppCompatActivity {
                     Log.d(TAG, "Photo Capture OK");
                     onPhotoTaken(currentCameraSelectionParams.imagePath,
                             currentCameraSelectionParams.imageView,
-                            R.drawable.ic_camera);
+                            R.mipmap.ic_camera);
                 } else {
                     Log.e(TAG, "Photo Capture FAILED!");
                 }
@@ -2007,6 +3143,20 @@ public class HistrionMainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, intent);
 
     }
+
+    private void loadNewPersonaFromPath(String pathToPersona) {
+        String personaJSON = null;
+        try {
+            personaJSON = Utility.readFileToString(pathToPersona);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Utility.showAlert("Persona File Error","Sorry, but loading the persona from file has failed! Ensure the file can be read, and is legitimate!", R.mipmap.ic_error,this);
+            return;
+        }
+
+        loadNewPersona(parsePersona(personaJSON));
+    }
+
 
     protected void onPhotoTaken(String imgPath, ImageButton imageView,
                                 int defaultResourceImage) {
@@ -2232,6 +3382,49 @@ public class HistrionMainActivity extends AppCompatActivity {
             this.imagePath = imagePath;
             this.fieldCID = fieldCID;
             this.imageView = imageButton;
+        }
+    }
+
+    class SpecialChromeClient extends WebChromeClient {
+        private View mCustomView;
+        private WebChromeClient.CustomViewCallback mCustomViewCallback;
+        protected FrameLayout mFullscreenContainer;
+        private int mOriginalOrientation;
+        private int mOriginalSystemUiVisibility;
+
+        SpecialChromeClient() {}
+
+        public Bitmap getDefaultVideoPoster()
+        {
+            if (mCustomView == null) {
+                return null;
+            }
+            return BitmapFactory.decodeResource(getApplicationContext().getResources(), 2130837573);
+        }
+
+        public void onHideCustomView()
+        {
+            ((FrameLayout)getWindow().getDecorView()).removeView(this.mCustomView);
+            this.mCustomView = null;
+            getWindow().getDecorView().setSystemUiVisibility(this.mOriginalSystemUiVisibility);
+            setRequestedOrientation(this.mOriginalOrientation);
+            this.mCustomViewCallback.onCustomViewHidden();
+            this.mCustomViewCallback = null;
+        }
+
+        public void onShowCustomView(View paramView, WebChromeClient.CustomViewCallback paramCustomViewCallback)
+        {
+            if (this.mCustomView != null)
+            {
+                onHideCustomView();
+                return;
+            }
+            this.mCustomView = paramView;
+            this.mOriginalSystemUiVisibility = getWindow().getDecorView().getSystemUiVisibility();
+            this.mOriginalOrientation = getRequestedOrientation();
+            this.mCustomViewCallback = paramCustomViewCallback;
+            ((FrameLayout)getWindow().getDecorView()).addView(this.mCustomView, new FrameLayout.LayoutParams(-1, -1));
+            getWindow().getDecorView().setSystemUiVisibility(3846 | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         }
     }
 }

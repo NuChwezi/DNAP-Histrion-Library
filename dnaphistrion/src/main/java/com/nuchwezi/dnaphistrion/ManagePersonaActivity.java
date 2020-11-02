@@ -201,25 +201,19 @@ public class ManagePersonaActivity extends AppCompatActivity {
             return super.onOptionsItemSelected(v);
     }
 
+
     private void checkSubscriptionChannels() {
-        String subscriptionChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_CHANNELS, autoInstallChannel, this);
-        String autoInstallChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, autoInstallChannel, this);
-        boolean allowAutoInstall = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_CHECK_AUTO_INSTALL_FROM_CHANNEL, true, this);
-        if((subscriptionChannelSpec == null) && (autoInstallChannelSpec == null))
+        String autoInstallChannelSpec = Utility.getSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, null, this);
+        if((autoInstallChannelSpec == null))
             return;
 
         HashMap<String,Boolean> channelAuto = new HashMap<>();
 
-        if(subscriptionChannelSpec != null) {
-            ArrayList<String> channels = parseSubscriptionChannels(subscriptionChannelSpec);
-            for(String chan: channels)
-                channelAuto.put(chan,false);
-        }
 
         if(autoInstallChannelSpec != null) {
             ArrayList<String> channels = parseSubscriptionChannels(autoInstallChannelSpec);
             for(String chan: channels)
-                channelAuto.put(chan,allowAutoInstall? true: false);
+                channelAuto.put(chan,false);
         }
 
         if(channelAuto.size() > 0){
@@ -228,6 +222,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
             }
         }
     }
+
 
     private void loadPersonaFromChannel(String channelQuery, final Boolean autoInstall) {
         if(channelQuery == null) {

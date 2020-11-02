@@ -1,25 +1,63 @@
 package com.nuchwezi.dnaphistrion;
 
+import android.content.Context;
 import android.graphics.Color;
+
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.lang.reflect.Type;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Created by NemesisFixx on 20-Aug-16.
  */
 public class Persona {
+    public static final String META_FIELD_NAME = "*";
+    private static final String DEFAULT_THEATRE_BASE_URL = "https://chwezi.tech/";
+    public static final String PERSONA_BASEDIR = "DNAP_PERSONAS";
+
     public static boolean hasRestrictedAccess(JSONObject persona) {
         try {
             return persona.getString(KEYS.ACCESS).equalsIgnoreCase("LIMITED");
         } catch (JSONException e) {
             e.printStackTrace();
         }
+        return false;
+    }
+
+    public static boolean hasSTICKY_ACTS_ON(JSONObject persona, Context context){
+        return hasSTICKY_ACTS_ON(Persona.getAppUUID(persona), context);
+    }
+
+    public static boolean hasSTICKY_ACTS_ON(String personaUUID, Context context) {
+        DBAdapter dbAdapter = new DBAdapter(context);
+        dbAdapter.open();
+
+        Gson gson = new Gson();
+
+        if(dbAdapter.existsDictionaryKey(Persona.KEYS.STICKY_ACTS_ACTIVE_LIST)) {
+
+            String stickyONSetJSON = dbAdapter.fetchDictionaryEntry(Persona.KEYS.STICKY_ACTS_ACTIVE_LIST);
+
+            Type founderSetType = new TypeToken<HashSet<String>>() {
+            }.getType();
+
+            HashSet<String> stickyONSet = gson.fromJson(stickyONSetJSON, founderSetType);
+
+            return
+                    stickyONSet.contains(personaUUID);
+        }
+
         return false;
     }
 
@@ -44,6 +82,13 @@ public class Persona {
     }
 
     public static String getFieldCId(JSONObject field) {
+        try {
+            return String.format("%s-%s", field.getString(KEYS.CID), field.getString(KEYS.FIELD_TYPE));
+        } catch (JSONException e) {
+            return null;
+        }
+    }
+    public static String getLeanFieldCId(JSONObject field) {
         try {
             return field.getString(KEYS.CID);
         } catch (JSONException e) {
@@ -93,7 +138,9 @@ public class Persona {
 
     public static String getAppTheatreAddress(JSONObject persona) {
         try {
-            return persona.getJSONObject(KEYS.APP).getString(KEYS.THEATRE_ADDRESS);
+            String theatreURL =  persona.getJSONObject(KEYS.APP).getString(KEYS.THEATRE_ADDRESS);
+            String modifiedTheatreAddress = theatreURL.replace("theatre.nuchwezi.com","chwezi.tech");
+            return modifiedTheatreAddress;
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -128,7 +175,7 @@ public class Persona {
                         int colorV = Color.parseColor(String.format("#%s", parsedColor)); // in case # is missing...
                         return colorV;
                     }catch (Exception ex){
-                        return 1; //R.color.colorAccent;
+                        return R.color.colorAccent;
                     }
                 }
             }
@@ -168,7 +215,6 @@ public class Persona {
     }
 
     public static boolean isInputField(JSONObject field) {
-
         try {
             switch (field.getString(KEYS.FIELD_TYPE)) {
                 case FieldTypes.TEXT:
@@ -184,8 +230,16 @@ public class Persona {
                 case FieldTypes.CAMERA:
                 case FieldTypes.DEVICE_ID:
                 case FieldTypes.DEVICE_GPS:
-                case FieldTypes.HIDDEN:
-               // case FieldTypes.BARCODE: TODO: add barcode
+                case FieldTypes.HIDDEN: {
+                    // TODO: for now, we shall use this field type to intercept some
+                    // meta functions such as forcing sticky-acts on a persona
+                    // in that case, we should skip these when parsing acts
+                    String fieldName = field.getString(Persona.KEYS.LABEL);
+                    if(fieldName.equalsIgnoreCase(Persona.META_FIELD_NAME)) {
+                        return false;
+                    }
+                }
+                case FieldTypes.BARCODE:
                 case FieldTypes.CHECK_BOXES:{
                     return true;
                 }
@@ -268,12 +322,20 @@ public class Persona {
         return null;
     }
 
+    public static String getNewPersonaFilePath(JSONObject persona) {
+        String SESSION_GUUID = java.util.UUID.randomUUID().toString();
+        return String.format("%s-%s.%s", Persona.getAppName(persona), SESSION_GUUID,
+                "persona");
+    }
+
     public static String makeFieldID(String intID) {
         return String.format("c%s", intID);
     }
 
     public static String makeBatchSubmissionAddress(String theatre_address) {
-        return String.format("%s/batch/", theatre_address);
+        String theatreURL =  theatre_address;
+        String modifiedTheatreAddress = theatreURL.replace("theatre.nuchwezi.com","chwezi.tech");
+        return String.format("%s/batch/", modifiedTheatreAddress);
     }
 
     public static String getDivinerURL(JSONObject persona, String access_key) {
@@ -281,7 +343,7 @@ public class Persona {
         try
         {
             URL url = new URL(theatreAddress);
-            String baseUrl = url.getProtocol() + "://" + url.getHost();
+            String baseUrl = url.getProtocol() + "://" + conditionalRewcriteHOST(url.getHost());
             String divinerURL = String.format("%s/persona/%s/diviner/mini/?show_title=0&compact=1", baseUrl, getAppUUID(persona));
             if(access_key != null){
                 divinerURL += String.format("&key=%s", access_key);
@@ -293,6 +355,13 @@ public class Persona {
         }
 
         return null;
+    }
+
+    private static String conditionalRewcriteHOST(String host) {
+        if(host.equalsIgnoreCase("theatre.nuchwezi.com"))
+            return "chwezi.tech";
+        else
+            return host;
     }
 
     public static String spaceURL(JSONObject persona) {
@@ -310,6 +379,209 @@ public class Persona {
 
         return null;
     }
+
+    public static String getPersonaURL(JSONObject persona) {
+        String theatreAddress = getAppTheatreAddress(persona);
+        try
+        {
+            URL url = theatreAddress.trim().length() == 0 ? new URL(Persona.DEFAULT_THEATRE_BASE_URL) : new URL(theatreAddress);
+            String baseUrl = url.getProtocol() + "://" + url.getHost();
+            String personaURL = String.format("%s/api/persona/%s/", baseUrl, getAppUUID(persona));
+            return personaURL;
+        }
+        catch (MalformedURLException e)
+        {
+        }
+
+        return null;
+    }
+
+    public static String getBriQURL(JSONObject persona, String access_key) {
+        String theatreAddress = getAppTheatreAddress(persona);
+        try
+        {
+            URL url = new URL(theatreAddress);
+            String baseUrl = url.getProtocol() + "://" + url.getHost();
+            String divinerURL = String.format("%s/persona/%s/briq/?", baseUrl, getAppUUID(persona));
+            if(access_key != null){
+                divinerURL += String.format("&key=%s", access_key);
+            }
+            return divinerURL;
+        }
+        catch (MalformedURLException e)
+        {
+        }
+
+        return null;
+    }
+
+    public static String getGeomatURL(JSONObject persona, String access_key) {
+        String theatreAddress = getAppTheatreAddress(persona);
+        try
+        {
+            URL url = new URL(theatreAddress);
+            String baseUrl = url.getProtocol() + "://" + url.getHost();
+            String divinerURL = String.format("%s/persona/%s/geomat/?", baseUrl, getAppUUID(persona));
+            if(access_key != null){
+                divinerURL += String.format("&key=%s", access_key);
+            }
+            return divinerURL;
+        }
+        catch (MalformedURLException e)
+        {
+        }
+
+        return null;
+    }
+
+    public static String getAppDescription(JSONObject persona, boolean showVersion) {
+        try {
+            if (showVersion) {
+                String appVersion = getAppVersion(persona);
+
+                if (appVersion != null)
+                    return String.format("%s\n\n--- VERSION: %s", getAppDescription(persona), getAppVersion(persona));
+            }
+            return getAppDescription(persona);
+        }catch (Exception e){
+            return "";
+        }
+    }
+
+    private static boolean hasAppVersion(JSONObject persona) {
+        JSONArray fields = Persona.appFields(persona);
+        for (int f = 0; f < fields.length(); f++) {
+
+            JSONObject field = null;
+            try {
+                field = fields.getJSONObject(f);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            String fieldType = null;
+
+            try {
+                fieldType = field.getString(KEYS.FIELD_TYPE);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            if(fieldType.equalsIgnoreCase(FieldTypes.HIDDEN)) {
+                if(Persona.getFieldLabel(field).equalsIgnoreCase("version")){
+                    return true;
+                }
+            }
+
+        }
+
+        return false;
+    }
+
+    private static String getAppVersion(JSONObject persona) {
+        JSONArray fields = Persona.appFields(persona);
+        for (int f = 0; f < fields.length(); f++) {
+
+            JSONObject field = null;
+            try {
+                field = fields.getJSONObject(f);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            String fieldType = null;
+
+            try {
+                fieldType = field.getString(KEYS.FIELD_TYPE);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            if(fieldType.equalsIgnoreCase(FieldTypes.HIDDEN)) {
+                if(Persona.getFieldLabel(field).equalsIgnoreCase("version")){
+                    return Persona.getfieldDescription(field);
+                }
+            }
+
+        }
+
+        return null;
+    }
+
+    private static String getfieldDescription(JSONObject field) {
+        try {
+            return Persona.getFieldOptions(field).getString(KEYS.DESCRIPTION);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    public static boolean isPersonaURL(String url) {
+        String personaURLPrefix = String.format("%sapi/persona/",DEFAULT_THEATRE_BASE_URL);
+        if (url.startsWith(personaURLPrefix)) {
+            String referenceString = url.substring(personaURLPrefix.length(),url.length());
+            boolean isPersonaPath = referenceString.matches("[a-zA-Z0-9\\-]*\\/?\\s?$");
+            return isPersonaPath;
+        }
+        else
+            return false;
+    }
+
+    public static boolean fieldHasMeta(JSONObject field) {
+        try {
+            return field.has(KEYS.FIELD_META) && (field.getString(KEYS.FIELD_META).trim().length() > 0);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        return false;
+    }
+
+    public static String getFieldMeta(JSONObject field) {
+        try {
+            return field.getString(KEYS.FIELD_META);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        return "";
+    }
+
+    public static String makeFieldDataCacheKEY(String appUUID) {
+        return String.format("PERSONA_FIELD_DYNAMIC_DATA_CACHE:%s", appUUID);
+    }
+
+    public static String parsePersonaUUIDFromURL(String personaURL) {
+        try {
+            Pattern pattern = Pattern.compile("api\\/persona\\/([^\\/]+)\\/");
+            Matcher matcher = pattern.matcher(personaURL);
+            String val = "";
+            if (matcher.find()) {
+                val = matcher.group(1);  // get the uuid
+            }
+            return val;
+        }catch (Exception e){
+            return null;
+        }
+    }
+
+    public static String getFieldName(JSONObject persona, String fieldCID) {
+        try {
+            JSONArray fields = persona.getJSONArray(KEYS.FIELDS);
+            for(int f = 0; f < fields.length(); f++) {
+                JSONObject field = fields.getJSONObject(f);
+                if (Persona.getFieldCId(field).equalsIgnoreCase(fieldCID))
+                    return Persona.getFieldLabel(field);
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+        return fieldCID; // fallback to CID if we didn't find a match.
+    }
+
 
     public class KEYS {
         public static final String APP = "app";
@@ -337,8 +609,13 @@ public class Persona {
         public static final String CACHE_FILES = "CACHE_FILES";
         public static final String CACHE_TIMESTAMP = "CACHE_TIMESTAMP";
         public static final String ACCESS = "access";
-        public static final String CACHE_RID = "_RID";
         public static final String PATTERN = "pattern";
+
+        public static final String STICKY_ACTS_ACTIVE_LIST = "STICKY_ACTS_ACTIVE_LIST";
+
+        public static final String FIELD_META = "meta";
+        public static final String CACHE_ORIGIN_STORE_ID = "CACHE_ORIGIN_STORE_ID";
+        public static final String CLONE_ACT = "CLONE_ACT";
     }
 
     public class FieldTypes {
@@ -359,6 +636,12 @@ public class Persona {
         public static final String DEVICE_ID = "deviceid";
         public static final String HIDDEN = "hidden";
         public static final String DEVICE_GPS = "devicegps";
+        public static final String BARCODE = "barcode";
+        public static final String TRIGGER = "trigger";
+        public static final String SHOW_VIDEO = "show_video";
+        public static final String PLAY_AUDIO = "play_audio";
+        public static final String SHOW_URL = "show_url";
+        public static final String SHOW_WEBSITE = "show_website";
     }
 
     public class TRANSPORT_MODES {
@@ -366,5 +649,10 @@ public class Persona {
         public static final String GET = "GET";
         public static final String SMS = "SMS";
         public static final String EMAIL = "EMAIL";
+    }
+
+    public class PERSONA_REFERENCES {
+        public static final String KEY_PERSONA_UUID__FEEDBACK_PERSONA = "bb765c31-6959-49d0-b192-6c83bdab5cb4";
+        public static final String KEY_PERSONA_URL__FEEDBACK_PERSONA = "https://chwezi.tech/api/persona/bb765c31-6959-49d0-b192-6c83bdab5cb4/";
     }
 }

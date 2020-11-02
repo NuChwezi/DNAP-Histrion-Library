@@ -23,4 +23,6 @@
     <string name="action_fetch_personas_short">Refresh</string>
     <string name="title_activity_manage_persona">All Personas</string>
     <string name="action_settings">Settings</string>
+    <string name="internal_storage">Internal storage</string>
+    <string name="pref_user_header">DNAP Profile</string>
 </resources>

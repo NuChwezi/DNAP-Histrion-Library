@@ -156,13 +156,13 @@ public class PersonaAdapter extends BaseExpandableListAdapter {
         String uri = Persona.getAppBrandURI(persona);
         if((uri != null) && (uri.length() > 0)) {
 
-            Picasso.with(context)
+            Picasso.get()
                     .load(uri)
                     .placeholder(R.drawable.loading)
                     .error(R.drawable.ic_persona)
                     .into(holder.imgPersonaBrandImage);
         }else {
-            Picasso.with(context)
+            Picasso.get()
                     .load(R.drawable.ic_persona)
                     .placeholder(R.drawable.loading)
                     .error(R.drawable.ic_persona)
