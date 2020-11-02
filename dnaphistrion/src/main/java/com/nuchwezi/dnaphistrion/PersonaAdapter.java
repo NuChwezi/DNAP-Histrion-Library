@@ -12,7 +12,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.squareup.picasso.Picasso;
+import com.bumptech.glide.Glide;
 
 import org.json.JSONObject;
 
@@ -156,18 +156,19 @@ public class PersonaAdapter extends BaseExpandableListAdapter {
         String uri = Persona.getAppBrandURI(persona);
         if((uri != null) && (uri.length() > 0)) {
 
-            Picasso.get()
+            Glide.with(context)
                     .load(uri)
                     .placeholder(R.drawable.loading)
                     .error(R.drawable.ic_persona)
                     .into(holder.imgPersonaBrandImage);
         }else {
-            Picasso.get()
+            Glide.with(context)
                     .load(R.drawable.ic_persona)
                     .placeholder(R.drawable.loading)
                     .error(R.drawable.ic_persona)
                     .into(holder.imgPersonaBrandImage);
         }
+
 
         // so we can know which persona to act on...
         holder.btnMakeDefault.setTag(Persona.getAppUUID(persona));
