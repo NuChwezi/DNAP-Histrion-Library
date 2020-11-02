@@ -31,6 +31,7 @@ To get started, simply add the following to your root project gradle file:
           // for now, also need to add these two dependencies...
           implementation 'com.koushikdutta.ion:ion:2.+'
           implementation 'androidx.coordinatorlayout:coordinatorlayout:1.0.0-alpha1'
+          implementation 'com.github.bumptech.glide:glide:4.11.0'
 	}
   
 Please check [JitPack](https://jitpack.io/#NuChwezi/DNAP-Histrion-Library/) for the latest release of this library, so you **replace** `TAG` in the above snippet with the right release name. 
