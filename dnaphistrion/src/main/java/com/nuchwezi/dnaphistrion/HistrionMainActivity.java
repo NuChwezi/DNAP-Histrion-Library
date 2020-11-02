@@ -164,8 +164,6 @@ public class HistrionMainActivity extends AppCompatActivity {
         setContentView(R.layout.dnap_activity_histrion);
         PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
 
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-
         handler = new Handler();
 
         adapter = new DBAdapter(this);

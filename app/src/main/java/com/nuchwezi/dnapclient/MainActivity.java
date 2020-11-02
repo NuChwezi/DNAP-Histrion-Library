@@ -33,7 +33,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void launchDNAPPersona(View view) {
         try {
-            switchToDNAP_Persona("bb765c31-6959-49d0-b192-6c83bdab5cb4", "NUCHWEZI2");
+            switchToDNAP_Persona("bb765c31-6959-49d0-b192-6c83bdab5cb4", "NUCHWEZI2|266TV");
         }catch (Exception e){
             e.printStackTrace();
             Log.e("DNAP:Client", e.getMessage());
