@@ -48,9 +48,11 @@ public class ManagePersonaActivity extends AppCompatActivity {
         adapter.open();
 
         Intent intent = getIntent();
+
         if(intent.hasExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL)){
             try {
                 autoInstallChannel = intent.getStringExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL);
+                Utility.setSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, autoInstallChannel, this);
             }catch (Exception e){
                 Utility.showAlert("Invalid Channel", "The Channel you tried to subscribe to seems be invalid! Contact app developers to rectify this.", this);
             }

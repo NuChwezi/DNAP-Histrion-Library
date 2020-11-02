@@ -7,6 +7,8 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 
+import com.nuchwezi.dnaphistrion.HistrionMainActivity;
+
 public class MainActivity extends AppCompatActivity {
 
     @Override
@@ -19,11 +21,11 @@ public class MainActivity extends AppCompatActivity {
         Intent _intent = new Intent(MainActivity.this, com.nuchwezi.dnaphistrion.HistrionMainActivity.class);
 
         if(personaUUID != null){
-            _intent.putExtra("PERSONA:UUID", personaUUID);
+            _intent.putExtra(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_UUID, personaUUID);
         }
 
         if(autoInstallChannel != null){
-            _intent.putExtra("CHANNEL:NAME", autoInstallChannel);
+            _intent.putExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL, autoInstallChannel);
         }
 
         startActivity(_intent);
@@ -36,5 +38,24 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
             Log.e("DNAP:Client", e.getMessage());
         }
+    }
+
+    public void launchDNAPPersonaManager(View view) {
+        try {
+            switchToDNAP_PersonaManager("NUCHWEZI2");
+        }catch (Exception e){
+            e.printStackTrace();
+            Log.e("DNAP:Client", e.getMessage());
+        }
+    }
+
+    private void switchToDNAP_PersonaManager(String channelSpecification) {
+        Intent _intent = new Intent(MainActivity.this, com.nuchwezi.dnaphistrion.ManagePersonaActivity.class);
+
+        if(channelSpecification != null){
+            _intent.putExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL, channelSpecification);
+        }
+
+        startActivity(_intent);
     }
 }

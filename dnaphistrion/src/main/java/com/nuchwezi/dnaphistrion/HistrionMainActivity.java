@@ -3031,7 +3031,7 @@ public class HistrionMainActivity extends AppCompatActivity {
 
         Intent _intent = new Intent(HistrionMainActivity.this, ManagePersonaActivity.class);
         if(autoInstallChannel != null){
-            _intent.putExtra("CHANNEL:NAME", autoInstallChannel);
+            _intent.putExtra(PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL, autoInstallChannel);
         }
         startActivity(_intent);
     }
