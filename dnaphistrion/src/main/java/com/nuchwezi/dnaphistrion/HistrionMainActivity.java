@@ -6,7 +6,6 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
@@ -90,7 +89,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -99,11 +97,14 @@ public class HistrionMainActivity extends AppCompatActivity {
     private String autoInstallChannel; // default DNAP Channel
     JSONObject autoSaveCacheTextFields = new JSONObject();
     private BARCODESCANMODE barcodeScanMode;
+    public String personaTypeName = PERSONA_REFERENCES.KEY_PERSONA_TYPENAME_DEFAULT; // useful in customizing nomenclature on interface
 
     public class PERSONA_REFERENCES {
         public static final String DNAP_FEEDBACK_PERSONA_UUID = "bb765c31-6959-49d0-b192-6c83bdab5cb4";
         public static final String KEY_PERSONA_UUID = "PERSONA:UUID";
         public static final String AUTO_INSTALL_CHANNEL = "CHANNEL:NAME";
+        public static final String KEY_PERSONA_TYPENAME = "PERSONA:TYPENAME";
+        public static final String KEY_PERSONA_TYPENAME_DEFAULT = "Persona";
     }
 
     private boolean noPersonaLoadedYet = true;
@@ -197,6 +198,31 @@ public class HistrionMainActivity extends AppCompatActivity {
                 Utility.setSetting(Utility.PREFERENCES.PREF_KEY_SETTINGS_AUTO_INSTALL_CHANNEL, autoInstallChannel, this);
             }catch (Exception e){
                 Utility.showAlert("Invalid Channel", "The Channel you tried to subscribe to seems be invalid! Contact app developers to rectify this.", this);
+            }
+        }
+
+        // to customize "Persona" naming...
+        if(intent.hasExtra(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+            try {
+                personaTypeName = intent.getStringExtra(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME);
+                if(adapter.existsDictionaryKey(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+                    adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME, personaTypeName));
+                }else{
+                    adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME, personaTypeName));
+                }
+            }catch (Exception e){
+                if(adapter.existsDictionaryKey(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+                    personaTypeName = adapter.fetchDictionaryEntry(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME);
+                }else{
+                    personaTypeName = PERSONA_REFERENCES.KEY_PERSONA_TYPENAME_DEFAULT;
+                }
+            }
+        }else
+        {
+            if(adapter.existsDictionaryKey(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+                personaTypeName = adapter.fetchDictionaryEntry(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME);
+            }else{
+                personaTypeName = PERSONA_REFERENCES.KEY_PERSONA_TYPENAME_DEFAULT;
             }
         }
 
@@ -1093,7 +1119,7 @@ public class HistrionMainActivity extends AppCompatActivity {
         LinearLayout linearLayoutControls = (LinearLayout) findViewById(R.id.linLayoutForControls);
         // bootstrap our app from the persona
         renderPersona(this.activePersona, linearLayoutControls, personaTheme);
-        Utility.showToast("Persona successfully loaded.", this);
+        Utility.showToast(String.format("%s successfully loaded.", personaTypeName), this);
 
         noPersonaLoadedYet = false;
 
@@ -3023,6 +3049,13 @@ public class HistrionMainActivity extends AppCompatActivity {
             return true;
         } else
             return super.onOptionsItemSelected(v);
+    }
+
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        MenuItem item = menu.findItem(R.id.action_manage_personas);
+        item.setTitle(String.format("Manage %ss", personaTypeName));
+        return super.onPrepareOptionsMenu(menu);
     }
 
     private void switchToManagePersonas() {

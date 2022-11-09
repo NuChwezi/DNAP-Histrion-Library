@@ -17,7 +17,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
     }
 
-    private void switchToDNAP_Persona(String personaUUID, String autoInstallChannel) {
+    private void switchToDNAP_Persona(String personaUUID, String autoInstallChannel , String personaTypeName) {
         Intent _intent = new Intent(MainActivity.this, com.nuchwezi.dnaphistrion.HistrionMainActivity.class);
 
         if(personaUUID != null){
@@ -28,12 +28,16 @@ public class MainActivity extends AppCompatActivity {
             _intent.putExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL, autoInstallChannel);
         }
 
+        if(personaTypeName != null){
+            _intent.putExtra(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME, personaTypeName);
+        }
+
         startActivity(_intent);
     }
 
     public void launchDNAPPersona(View view) {
         try {
-            switchToDNAP_Persona("bb765c31-6959-49d0-b192-6c83bdab5cb4", "NUCHWEZI2|266TV");
+            switchToDNAP_Persona("bb765c31-6959-49d0-b192-6c83bdab5cb4", "NUCHWEZI2|266TV", "Applet");
         }catch (Exception e){
             e.printStackTrace();
             Log.e("DNAP:Client", e.getMessage());
@@ -42,18 +46,22 @@ public class MainActivity extends AppCompatActivity {
 
     public void launchDNAPPersonaManager(View view) {
         try {
-            switchToDNAP_PersonaManager("NUCHWEZI2");
+            switchToDNAP_PersonaManager("NUCHWEZI2", "Applet");
         }catch (Exception e){
             e.printStackTrace();
             Log.e("DNAP:Client", e.getMessage());
         }
     }
 
-    private void switchToDNAP_PersonaManager(String channelSpecification) {
+    private void switchToDNAP_PersonaManager(String channelSpecification, String personaTypeName) {
         Intent _intent = new Intent(MainActivity.this, com.nuchwezi.dnaphistrion.ManagePersonaActivity.class);
 
         if(channelSpecification != null){
             _intent.putExtra(HistrionMainActivity.PERSONA_REFERENCES.AUTO_INSTALL_CHANNEL, channelSpecification);
+        }
+
+        if(personaTypeName != null){
+            _intent.putExtra(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME, personaTypeName);
         }
 
         startActivity(_intent);

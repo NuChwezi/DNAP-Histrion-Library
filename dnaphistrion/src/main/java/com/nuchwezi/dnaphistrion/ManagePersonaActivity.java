@@ -34,6 +34,8 @@ public class ManagePersonaActivity extends AppCompatActivity {
     JSONObject knownPersonas;
     private String autoInstallChannel; // default DNAP Channel
 
+    public String personaTypeName = HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME_DEFAULT; // useful in customizing nomenclature on interface
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -57,6 +59,33 @@ public class ManagePersonaActivity extends AppCompatActivity {
                 Utility.showAlert("Invalid Channel", "The Channel you tried to subscribe to seems be invalid! Contact app developers to rectify this.", this);
             }
         }
+
+        // to customize "Persona" naming...
+        if(intent.hasExtra(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+            try {
+                personaTypeName = intent.getStringExtra(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME);
+                if(adapter.existsDictionaryKey(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+                    adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME, personaTypeName));
+                }else{
+                    adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME, personaTypeName));
+                }
+            }catch (Exception e){
+                if(adapter.existsDictionaryKey(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+                    personaTypeName = adapter.fetchDictionaryEntry(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME);
+                }else{
+                    personaTypeName = HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME_DEFAULT;
+                }
+            }
+        }else
+        {
+            if(adapter.existsDictionaryKey(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME)){
+                personaTypeName = adapter.fetchDictionaryEntry(HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME);
+            }else{
+                personaTypeName = HistrionMainActivity.PERSONA_REFERENCES.KEY_PERSONA_TYPENAME_DEFAULT;
+            }
+        }
+
+        setTitle(String.format("All %ss", personaTypeName));
 
         loadCachedPersonas();
     }
@@ -126,7 +155,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
             if (adapter.existsDictionaryKey(Utility.DB_KEYS.ACTIVE_PERSONA_UUID)) {
                 String activeUUID = adapter.fetchDictionaryEntry(Utility.DB_KEYS.ACTIVE_PERSONA_UUID);
                 if (activeUUID.equalsIgnoreCase(uuid)) {
-                    Utility.showAlert("WARNING", "You have tried to delete the currently active persona. This is not allowed... Set the default to something else, then try again"
+                    Utility.showAlert("WARNING", String.format("You have tried to delete the currently active %s. This is not allowed... Set the default to something else, then try again", personaTypeName)
                           , this);
                     return;
                 }
@@ -138,14 +167,14 @@ public class ManagePersonaActivity extends AppCompatActivity {
             if(adapter.existsDictionaryKey(Utility.DB_KEYS.PERSONA_DICTIONARY)) {
                 adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(Utility.DB_KEYS.PERSONA_DICTIONARY, knownPersonas.toString()));
                 loadCachedPersonas();
-                Utility.showToast("That persona has been deleted from the cache.", this);
+                Utility.showToast(String.format("That %s has been deleted from the cache.", personaTypeName), this);
             }
 
             if (adapter.existsDictionaryKey(Utility.DB_KEYS.ACTIVE_PERSONA_UUID)) {
                 String activeUUID = adapter.fetchDictionaryEntry(Utility.DB_KEYS.ACTIVE_PERSONA_UUID);
                 if (activeUUID.equalsIgnoreCase(uuid)) {
                    adapter.deleteDictionaryEntry(Utility.DB_KEYS.ACTIVE_PERSONA_UUID);
-                    Utility.showToast("The active persona has likewise been unset...", this);
+                    Utility.showToast(String.format("The active %s has likewise been unset...", personaTypeName), this);
                 }
             }
         }
@@ -164,7 +193,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
         }
 
         try {
-            Utility.showToast(String.format("%s has been set as the default persona", Persona.getAppName(knownPersonas.getJSONObject(uuid))), this);
+            Utility.showToast(String.format("%s has been set as the default %s", Persona.getAppName(knownPersonas.getJSONObject(uuid)), personaTypeName), this);
         } catch (JSONException e) {
             e.printStackTrace();
         }
@@ -237,7 +266,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
             return;
         }
 
-        Utility.showToast(String.format("Wait as we check for any personas under the %s channel", channelQuery), this, Toast.LENGTH_LONG);
+        Utility.showToast(String.format("Wait as we check for any %ss under the %s channel", personaTypeName, channelQuery), this, Toast.LENGTH_LONG);
 
         Uri url = Uri.parse(channelQuery);
         Utility.getHTTP(this, url.toString(), new ParametricCallback() {
@@ -250,7 +279,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
                         JSONObject persona = personaList.getJSONObject(i);
                         Log.d(Tag, String.format("Persona: %s", Persona.getAppName(persona)));
                         boolean setActivePersona = canSetActivePersona? autoInstall : false;
-                        Utility.showToast(String.format("A new persona (%s) has been cached",  Persona.getAppName(persona)), ManagePersonaActivity.this);
+                        Utility.showToast(String.format("A new %s (%s) has been cached", personaTypeName, Persona.getAppName(persona)), ManagePersonaActivity.this);
                         cacheActivePersona(persona,setActivePersona);
                     }
                 } catch (JSONException e) {
@@ -261,7 +290,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
         }, new ParametricCallback() {
             @Override
             public void call(String status) { // error
-                Utility.showToast("Failed to fetch persona list from the specified Channel Subscription Repository!", ManagePersonaActivity.this, Toast.LENGTH_LONG);
+                Utility.showToast(String.format("Failed to fetch %s list from the specified Channel Subscription Repository!", personaTypeName), ManagePersonaActivity.this, Toast.LENGTH_LONG);
             }
         });
     }

@@ -5,6 +5,15 @@
       <configuration PROFILE_NAME="Debug" CONFIG_NAME="Debug" />
     </configurations>
   </component>
+  <component name="DesignSurface">
+    <option name="filePathToZoomLevelMap">
+      <map>
+        <entry key="..\:/COSMOS/LABS/APPS/DNAP/LIBRARY/DNAP-Histrion-Library/dnaphistrion/src/main/res/layout/dnap_activity_manage_persona_cache.xml" value="0.22826086956521738" />
+        <entry key="..\:/COSMOS/LABS/APPS/DNAP/LIBRARY/DNAP-Histrion-Library/dnaphistrion/src/main/res/menu/menu.xml" value="0.25" />
+        <entry key="..\:/COSMOS/LABS/APPS/DNAP/LIBRARY/DNAP-Histrion-Library/dnaphistrion/src/main/res/xml/preferences.xml" value="0.22826086956521738" />
+      </map>
+    </option>
+  </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_11" default="true" project-jdk-name="1.8 (1)" project-jdk-type="JavaSDK">
     <output url="file://$PROJECT_DIR$/build/classes" />
   </component>
