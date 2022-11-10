@@ -378,9 +378,9 @@ public class Persona {
     }
 
     public static boolean isPersonaURL(String url, DBAdapter adapter) {
-        String personaURLPrefix = String.format("%sapi/persona/",DEFAULT_THEATRE_BASE_URL);
+        String personaURLPrefix = String.format("%s/api/persona/",DEFAULT_THEATRE_BASE_URL);
         if(adapter.existsDictionaryKey(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
-            personaURLPrefix = String.format("%sapi/persona/",adapter.fetchDictionaryEntry(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL));
+            personaURLPrefix = String.format("%s/api/persona/",adapter.fetchDictionaryEntry(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL));
         }
         if (url.startsWith(personaURLPrefix)) {
             String referenceString = url.substring(personaURLPrefix.length(),url.length());
