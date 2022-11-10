@@ -105,6 +105,7 @@ public class HistrionMainActivity extends AppCompatActivity {
         public static final String AUTO_INSTALL_CHANNEL = "CHANNEL:NAME";
         public static final String KEY_PERSONA_TYPENAME = "PERSONA:TYPENAME";
         public static final String KEY_PERSONA_TYPENAME_DEFAULT = "Persona";
+        public static final String KEY_THEATRE_BASE_URL = "THEATRE_BASE_URL";
     }
 
     private boolean noPersonaLoadedYet = true;
@@ -223,6 +224,19 @@ public class HistrionMainActivity extends AppCompatActivity {
                 personaTypeName = adapter.fetchDictionaryEntry(PERSONA_REFERENCES.KEY_PERSONA_TYPENAME);
             }else{
                 personaTypeName = PERSONA_REFERENCES.KEY_PERSONA_TYPENAME_DEFAULT;
+            }
+        }
+
+        // to customize "DNAP Theatre Base URL"...
+        if(intent.hasExtra(PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
+            try {
+                String DNAPTheatre_BaseURL = intent.getStringExtra(PERSONA_REFERENCES.KEY_THEATRE_BASE_URL);
+                if(adapter.existsDictionaryKey(PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
+                    adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(PERSONA_REFERENCES.KEY_THEATRE_BASE_URL, DNAPTheatre_BaseURL));
+                }else{
+                    adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(PERSONA_REFERENCES.KEY_THEATRE_BASE_URL, DNAPTheatre_BaseURL));
+                }
+            }catch (Exception e){
             }
         }
 
@@ -392,7 +406,7 @@ public class HistrionMainActivity extends AppCompatActivity {
         String[] chunks = subscriptionChannelSpec.split(Pattern.quote("|"));
         for(String chunk: chunks){
             if(!chunk.startsWith("http")){//it's a default repo query...
-                chans.add(makeDefaultChannelRepositoryQuery(chunk));
+                chans.add(makeDefaultChannelRepositoryQuery(chunk, adapter));
             }else
                 chans.add(chunk);
         }
@@ -400,8 +414,14 @@ public class HistrionMainActivity extends AppCompatActivity {
         return chans;
     }
 
-    private String makeDefaultChannelRepositoryQuery(String s) {
+    private String makeDefaultChannelRepositoryQuery(String s, DBAdapter adapter) {
         String template = getString(R.string.DEFAULT_CHANNEL_REPO_QUERY_PREFIX);
+
+        if(adapter.existsDictionaryKey(PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
+            String DNAPTheatre_BaseURL = adapter.fetchDictionaryEntry(PERSONA_REFERENCES.KEY_THEATRE_BASE_URL);
+            template = DNAPTheatre_BaseURL + "/api/channel/personas/?c=%s&amp;_t=%o";
+        }
+
         long time = (new Date()).getTime();
         return String.format(template ,s, time);
     }
@@ -2259,7 +2279,7 @@ public class HistrionMainActivity extends AppCompatActivity {
                     infoView.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View view) {
-                            openURL(url);
+                            openURL(url, adapter);
                         }
                     });
                     infoView.setGravity(Gravity.CENTER);
@@ -2467,8 +2487,8 @@ public class HistrionMainActivity extends AppCompatActivity {
         handleFieldLogicRegistry(field);
     }
 
-    private void openURL(String url) {
-        if(Persona.isPersonaURL(url)){
+    private void openURL(String url, DBAdapter adapter) {
+        if(Persona.isPersonaURL(url, adapter)){
             Utility.showToast("Persona detected. Loading...", this, Toast.LENGTH_LONG);
             if (Utility.isNetworkAvailable(this)) {
                 loadPersonaFromURL(url);

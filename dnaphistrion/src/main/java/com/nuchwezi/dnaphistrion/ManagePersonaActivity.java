@@ -85,6 +85,19 @@ public class ManagePersonaActivity extends AppCompatActivity {
             }
         }
 
+        // to customize "DNAP Theatre Base URL"...
+        if(intent.hasExtra(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
+            try {
+                String DNAPTheatre_BaseURL = intent.getStringExtra(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL);
+                if(adapter.existsDictionaryKey(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
+                    adapter.updateDictionaryEntry(new DBAdapter.DictionaryKeyValue(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL, DNAPTheatre_BaseURL));
+                }else{
+                    adapter.createDictionaryEntry(new DBAdapter.DictionaryKeyValue(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL, DNAPTheatre_BaseURL));
+                }
+            }catch (Exception e){
+            }
+        }
+
         setTitle(String.format("All %ss", personaTypeName));
 
         loadCachedPersonas();
@@ -301,7 +314,7 @@ public class ManagePersonaActivity extends AppCompatActivity {
         String[] chunks = subscriptionChannelSpec.split(Pattern.quote("|"));
         for(String chunk: chunks){
             if(!chunk.startsWith("http")){//it's a default repo query...
-                chans.add(makeDefaultChannelRepositoryQuery(chunk));
+                chans.add(makeDefaultChannelRepositoryQuery(chunk, adapter));
             }else
                 chans.add(chunk);
         }
@@ -309,8 +322,14 @@ public class ManagePersonaActivity extends AppCompatActivity {
         return chans;
     }
 
-    private String makeDefaultChannelRepositoryQuery(String s) {
+    private String makeDefaultChannelRepositoryQuery(String s, DBAdapter adapter) {
         String template = getString(R.string.DEFAULT_CHANNEL_REPO_QUERY_PREFIX);
+
+        if(adapter.existsDictionaryKey(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
+            String DNAPTheatre_BaseURL = this.adapter.fetchDictionaryEntry(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL);
+            template = DNAPTheatre_BaseURL + "/api/channel/personas/?c=%s&amp;_t=%o";
+        }
+
         long time = (new Date()).getTime();
         return String.format(template ,s, time);
     }

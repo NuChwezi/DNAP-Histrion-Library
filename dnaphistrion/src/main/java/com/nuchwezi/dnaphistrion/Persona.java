@@ -322,117 +322,6 @@ public class Persona {
         return null;
     }
 
-    public static String getNewPersonaFilePath(JSONObject persona) {
-        String SESSION_GUUID = java.util.UUID.randomUUID().toString();
-        return String.format("%s-%s.%s", Persona.getAppName(persona), SESSION_GUUID,
-                "persona");
-    }
-
-    public static String makeFieldID(String intID) {
-        return String.format("c%s", intID);
-    }
-
-    public static String makeBatchSubmissionAddress(String theatre_address) {
-        String theatreURL =  theatre_address;
-        String modifiedTheatreAddress = theatreURL.replace("theatre.nuchwezi.com","chwezi.tech");
-        return String.format("%s/batch/", modifiedTheatreAddress);
-    }
-
-    public static String getDivinerURL(JSONObject persona, String access_key) {
-        String theatreAddress = getAppTheatreAddress(persona);
-        try
-        {
-            URL url = new URL(theatreAddress);
-            String baseUrl = url.getProtocol() + "://" + conditionalRewcriteHOST(url.getHost());
-            String divinerURL = String.format("%s/persona/%s/diviner/mini/?show_title=0&compact=1", baseUrl, getAppUUID(persona));
-            if(access_key != null){
-                divinerURL += String.format("&key=%s", access_key);
-            }
-            return divinerURL;
-        }
-        catch (MalformedURLException e)
-        {
-        }
-
-        return null;
-    }
-
-    private static String conditionalRewcriteHOST(String host) {
-        if(host.equalsIgnoreCase("theatre.nuchwezi.com"))
-            return "chwezi.tech";
-        else
-            return host;
-    }
-
-    public static String spaceURL(JSONObject persona) {
-        String theatreAddress = getAppTheatreAddress(persona);
-        try
-        {
-            URL url = new URL(theatreAddress);
-            String baseUrl = url.getProtocol() + "://" + url.getHost();
-            String spaceURL = String.format("%s/channel/%s/space/", baseUrl, getAppUUID(persona));
-            return spaceURL;
-        }
-        catch (MalformedURLException e)
-        {
-        }
-
-        return null;
-    }
-
-    public static String getPersonaURL(JSONObject persona) {
-        String theatreAddress = getAppTheatreAddress(persona);
-        try
-        {
-            URL url = theatreAddress.trim().length() == 0 ? new URL(Persona.DEFAULT_THEATRE_BASE_URL) : new URL(theatreAddress);
-            String baseUrl = url.getProtocol() + "://" + url.getHost();
-            String personaURL = String.format("%s/api/persona/%s/", baseUrl, getAppUUID(persona));
-            return personaURL;
-        }
-        catch (MalformedURLException e)
-        {
-        }
-
-        return null;
-    }
-
-    public static String getBriQURL(JSONObject persona, String access_key) {
-        String theatreAddress = getAppTheatreAddress(persona);
-        try
-        {
-            URL url = new URL(theatreAddress);
-            String baseUrl = url.getProtocol() + "://" + url.getHost();
-            String divinerURL = String.format("%s/persona/%s/briq/?", baseUrl, getAppUUID(persona));
-            if(access_key != null){
-                divinerURL += String.format("&key=%s", access_key);
-            }
-            return divinerURL;
-        }
-        catch (MalformedURLException e)
-        {
-        }
-
-        return null;
-    }
-
-    public static String getGeomatURL(JSONObject persona, String access_key) {
-        String theatreAddress = getAppTheatreAddress(persona);
-        try
-        {
-            URL url = new URL(theatreAddress);
-            String baseUrl = url.getProtocol() + "://" + url.getHost();
-            String divinerURL = String.format("%s/persona/%s/geomat/?", baseUrl, getAppUUID(persona));
-            if(access_key != null){
-                divinerURL += String.format("&key=%s", access_key);
-            }
-            return divinerURL;
-        }
-        catch (MalformedURLException e)
-        {
-        }
-
-        return null;
-    }
 
     public static String getAppDescription(JSONObject persona, boolean showVersion) {
         try {
@@ -446,36 +335,6 @@ public class Persona {
         }catch (Exception e){
             return "";
         }
-    }
-
-    private static boolean hasAppVersion(JSONObject persona) {
-        JSONArray fields = Persona.appFields(persona);
-        for (int f = 0; f < fields.length(); f++) {
-
-            JSONObject field = null;
-            try {
-                field = fields.getJSONObject(f);
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-
-            String fieldType = null;
-
-            try {
-                fieldType = field.getString(KEYS.FIELD_TYPE);
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-
-            if(fieldType.equalsIgnoreCase(FieldTypes.HIDDEN)) {
-                if(Persona.getFieldLabel(field).equalsIgnoreCase("version")){
-                    return true;
-                }
-            }
-
-        }
-
-        return false;
     }
 
     private static String getAppVersion(JSONObject persona) {
@@ -518,8 +377,11 @@ public class Persona {
         return null;
     }
 
-    public static boolean isPersonaURL(String url) {
+    public static boolean isPersonaURL(String url, DBAdapter adapter) {
         String personaURLPrefix = String.format("%sapi/persona/",DEFAULT_THEATRE_BASE_URL);
+        if(adapter.existsDictionaryKey(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL)){
+            personaURLPrefix = String.format("%sapi/persona/",adapter.fetchDictionaryEntry(HistrionMainActivity.PERSONA_REFERENCES.KEY_THEATRE_BASE_URL));
+        }
         if (url.startsWith(personaURLPrefix)) {
             String referenceString = url.substring(personaURLPrefix.length(),url.length());
             boolean isPersonaPath = referenceString.matches("[a-zA-Z0-9\\-]*\\/?\\s?$");
@@ -649,10 +511,5 @@ public class Persona {
         public static final String GET = "GET";
         public static final String SMS = "SMS";
         public static final String EMAIL = "EMAIL";
-    }
-
-    public class PERSONA_REFERENCES {
-        public static final String KEY_PERSONA_UUID__FEEDBACK_PERSONA = "bb765c31-6959-49d0-b192-6c83bdab5cb4";
-        public static final String KEY_PERSONA_URL__FEEDBACK_PERSONA = "https://chwezi.tech/api/persona/bb765c31-6959-49d0-b192-6c83bdab5cb4/";
     }
 }
